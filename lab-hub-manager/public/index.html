@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L.A.B Hub Manager</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23171a1f'/><rect x='9' y='9' width='14' height='14' fill='none' stroke='%23fff' stroke-width='2'/></svg>">
+<style>
+  :root{
+    --bg:#e8eaee; --surface:#ffffff; --surface2:#f3f5f8; --line:#d3d8e0; --line2:#bcc3cf;
+    --ink:#12151b; --ink2:#5b6472; --ink3:#8b93a1; --accent:#1b2330; --steel:#2f5fd0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--ink);font-family:"Segoe UI",Inter,system-ui,-apple-system,sans-serif;font-size:14px}
+  body{padding:0;min-height:100vh}
+  .mono{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .wrap{max-width:1220px;margin:0 auto;padding:0 22px 40px}
+
+  /* header */
+  header{background:var(--surface);border-bottom:1px solid var(--line2);position:sticky;top:0;z-index:20}
+  .hbar{max-width:1220px;margin:0 auto;padding:0 22px;height:64px;display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:13px}
+  .mark{width:34px;height:34px;color:var(--ink)}
+  .wordmark{font-weight:700;letter-spacing:2px;font-size:15px}
+  .wordmark span{color:var(--ink3);font-weight:600}
+  .hright{display:flex;align-items:center;gap:20px}
+  .node{ text-align:right;font-size:12px;color:var(--ink2);line-height:1.5}
+  .node b{color:var(--ink);letter-spacing:.4px}
+  .live{display:inline-flex;align-items:center;gap:6px;font-size:11px;letter-spacing:1.5px;color:var(--ink2);text-transform:uppercase}
+  .live i{width:7px;height:7px;background:var(--steel);display:inline-block}
+  .btn{appearance:none;border:1px solid var(--accent);background:var(--accent);color:#fff;font-family:inherit;font-size:12px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;padding:11px 18px;cursor:pointer;border-radius:2px}
+  .btn:hover{background:#000}
+  .btn.ghost{background:#fff;color:var(--accent)}
+  .btn.ghost:hover{background:var(--surface2)}
+
+  /* section label */
+  .lbl{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--ink3);font-weight:600;margin:26px 2px 12px}
+
+  /* KPI blocks */
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:0;border:1px solid var(--line2);background:var(--surface)}
+  .kpi{padding:16px 18px;border-right:1px solid var(--line)}
+  .kpi:last-child{border-right:0}
+  .kpi .k{font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ink3);font-weight:600;display:flex;align-items:center;gap:7px}
+  .kpi .k svg{width:14px;height:14px;color:var(--ink2)}
+  .kpi .v{font-size:26px;font-weight:700;margin-top:9px;letter-spacing:-.5px}
+  .kpi .v small{font-size:13px;color:var(--ink3);font-weight:500}
+  .kpi .u{font-size:11px;color:var(--ink2);margin-top:3px}
+  .track{height:4px;background:var(--surface2);border:1px solid var(--line);margin-top:11px}
+  .track>i{display:block;height:100%;background:var(--accent);width:0;transition:width .5s}
+  @media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}.kpi:nth-child(3){border-right:0}.kpi{border-bottom:1px solid var(--line)}}
+  @media(max-width:560px){.kpis{grid-template-columns:repeat(2,1fr)}}
+
+  /* module grid */
+  .mods{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1px;background:var(--line2);border:1px solid var(--line2)}
+  .mod{background:var(--surface);padding:22px 20px;display:flex;flex-direction:column;gap:16px;min-height:132px}
+  .mod:hover{background:var(--surface2)}
+  .mod svg{width:30px;height:30px;color:var(--accent)}
+  .mod .row{display:flex;align-items:center;justify-content:space-between;margin-top:auto}
+  .mod .name{font-size:13px;font-weight:700;letter-spacing:.6px;text-transform:uppercase}
+  .mod .st{font-size:9.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--ink3);border:1px solid var(--line2);padding:2px 8px}
+
+  /* modal */
+  .veil{position:fixed;inset:0;background:rgba(18,21,27,.42);display:none;align-items:center;justify-content:center;z-index:50}
+  .veil.on{display:flex}
+  .modal{background:var(--surface);border:1px solid var(--line2);width:min(520px,92vw);border-radius:2px;box-shadow:0 24px 70px -20px rgba(0,0,0,.4)}
+  .mhead{padding:20px 24px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  .mhead h2{font-size:14px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700}
+  .mhead .x{cursor:pointer;color:var(--ink3);font-size:18px;line-height:1}
+  .mbody{padding:24px}
+  .step{display:none}.step.on{display:block}
+  .field{display:block;font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--ink2);font-weight:600;margin:0 0 8px}
+  input[type=text]{width:100%;padding:12px 13px;border:1px solid var(--line2);border-radius:2px;font-family:inherit;font-size:14px;background:var(--surface2)}
+  input[type=text]:focus{outline:none;border-color:var(--accent);background:#fff}
+  .code{background:var(--ink);color:#e8eaee;font-family:Consolas,monospace;font-size:12px;padding:13px 15px;border-radius:2px;word-break:break-all;margin-top:6px;user-select:all}
+  .hint{font-size:12px;color:var(--ink2);line-height:1.55;margin-top:14px}
+  .steps{display:flex;gap:6px;padding:16px 24px 0}
+  .steps i{flex:1;height:3px;background:var(--line)}
+  .steps i.on{background:var(--accent)}
+  .mfoot{padding:18px 24px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+  .waiting{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2);margin-top:16px}
+  .waiting i{width:9px;height:9px;border:2px solid var(--line2);border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .done-mark{width:44px;height:44px;color:var(--steel);margin-bottom:14px}
+  footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);color:var(--ink3);font-size:11px;letter-spacing:1px;text-transform:uppercase}
+</style>
+</head>
+<body>
+<header>
+  <div class="hbar">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="26" height="26"/><rect x="10" y="10" width="12" height="12"/>
+        <line x1="3" y1="3" x2="10" y2="10"/><line x1="29" y1="3" x2="22" y2="10"/>
+        <line x1="3" y1="29" x2="10" y2="22"/><line x1="29" y1="29" x2="22" y2="22"/>
+      </svg>
+      <div class="wordmark">L.A.B HUB MANAGER</div>
+    </div>
+    <div class="hright">
+      <div class="node">
+        <div class="live"><i></i><span id="live">CONNECTING</span></div>
+        <div id="node-id">—</div>
+      </div>
+      <button class="btn" id="btn-onboard">Onboard Admin</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="lbl">Server Utilisation</div>
+  <div class="kpis">
+    <div class="kpi">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="7" y="7" width="10" height="10"/><path d="M9 3v4M12 3v4M15 3v4M9 17v4M12 17v4M15 17v4M3 9h4M3 12h4M3 15h4M17 9h4M17 12h4M17 15h4"/></svg>CPU</div>
+      <div class="v mono"><span id="cpu">—</span><small>%</small></div>
+      <div class="track"><i id="cpu-b"></i></div>
+    </div>
+    <div class="kpi">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="7" width="20" height="10"/><path d="M6 17v3M10 17v3M14 17v3M18 17v3M6 10v4M10 10v4M14 10v4M18 10v4"/></svg>Memory</div>
+      <div class="v mono"><span id="mem">—</span><small>%</small></div>
+      <div class="u mono" id="mem-u">—</div>
+      <div class="track"><i id="mem-b"></i></div>
+    </div>
+    <div class="kpi">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>SSD</div>
+      <div class="v mono"><span id="lab">—</span><small>%</small></div>
+      <div class="u mono" id="lab-u">/srv/lab</div>
+      <div class="track"><i id="lab-b"></i></div>
+    </div>
+    <div class="kpi">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7c0-1.5 3.6-3 8-3s8 1.5 8 3-3.6 3-8 3-8-1.5-8-3z"/><path d="M4 7v10c0 1.5 3.6 3 8 3s8-1.5 8-3V7"/></svg>Boot USB</div>
+      <div class="v mono"><span id="root">—</span><small>%</small></div>
+      <div class="u mono" id="root-u">/</div>
+      <div class="track"><i id="root-b"></i></div>
+    </div>
+    <div class="kpi">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>Load</div>
+      <div class="v mono" style="font-size:20px" id="load">—</div>
+      <div class="u mono" id="net">—</div>
+    </div>
+    <div class="kpi">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Uptime</div>
+      <div class="v mono" style="font-size:20px" id="uptime">—</div>
+      <div class="u mono" id="dk">Docker —</div>
+    </div>
+  </div>
+
+  <div class="lbl">Modules</div>
+  <div class="mods">
+    <div class="mod">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 11l-5 5 5 5M21 11l5 5-5 5M18 8l-4 16"/></svg>
+      <div class="row"><span class="name">Dev Team</span><span class="st" id="dev-st">Pending</span></div>
+    </div>
+    <div class="mod" id="mod-fleet" style="cursor:pointer">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="13" y="4" width="6" height="6"/><rect x="4" y="22" width="6" height="6"/><rect x="22" y="22" width="6" height="6"/><path d="M16 10v6M16 16H7v6M16 16h9v6"/></svg>
+      <div class="row"><span class="name">Fleet / MDM</span><span class="st" id="fleet-st">Pending</span></div>
+    </div>
+    <div class="mod">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7"><ellipse cx="16" cy="8" rx="10" ry="4"/><path d="M6 8v16c0 2.2 4.5 4 10 4s10-1.8 10-4V8M6 16c0 2.2 4.5 4 10 4s10-1.8 10-4"/></svg>
+      <div class="row"><span class="name">SQL Brain</span><span class="st" id="sql-st">Pending</span></div>
+    </div>
+    <div class="mod">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="5" width="9" height="9"/><rect x="18" y="5" width="9" height="9"/><rect x="5" y="18" width="9" height="9"/><rect x="18" y="18" width="9" height="9"/></svg>
+      <div class="row"><span class="name">App Store</span><span class="st">Pending</span></div>
+    </div>
+    <div class="mod">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="16" cy="16" r="2.5" fill="currentColor"/><path d="M10 10a8.5 8.5 0 000 12M22 10a8.5 8.5 0 010 12M6 6a14 14 0 000 20M26 6a14 14 0 010 20"/></svg>
+      <div class="row"><span class="name">Hub Distribution</span><span class="st">Pending</span></div>
+    </div>
+    <div class="mod">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="16" cy="11" r="4"/><path d="M8 26c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+      <div class="row"><span class="name">Administrators</span><span class="st" id="admin-count">0 Paired</span></div>
+    </div>
+  </div>
+
+  <footer><span id="foot">L.A.B HUB MANAGER · lab-main-01 · —</span></footer>
+</div>
+
+<!-- Onboard Admin wizard -->
+<div class="veil" id="veil">
+  <div class="modal">
+    <div class="mhead"><h2>Onboard Administrator</h2><span class="x" id="x">✕</span></div>
+    <div class="steps"><i class="on" id="s1"></i><i id="s2"></i><i id="s3"></i></div>
+    <div class="mbody">
+      <div class="step on" id="step1">
+        <label class="field">Administrator name</label>
+        <input type="text" id="adm-name" placeholder="e.g. Tao Volkwyn" autocomplete="off">
+        <div class="hint">Creates an administrator identity on this server. The next step links your PC to it over the LAN.</div>
+      </div>
+      <div class="step" id="step2">
+        <label class="field">Link this administrator's PC</label>
+        <div class="hint" style="margin-top:0">Run this on the PC you want to administer from (PowerShell). It registers that machine with the server over the LAN.</div>
+        <div class="code" id="pair-cmd">—</div>
+        <div class="waiting" id="waiting"><i></i><span>Waiting for the PC to connect…</span></div>
+      </div>
+      <div class="step" id="step3" style="text-align:center">
+        <svg class="done-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18"/><path d="M8 12l3 3 5-6"/></svg>
+        <div style="font-size:15px;font-weight:700;letter-spacing:.5px" id="done-name">Administrator onboarded</div>
+        <div class="hint" id="done-pc">—</div>
+      </div>
+    </div>
+    <div class="mfoot" id="mfoot">
+      <button class="btn ghost" id="cancel">Cancel</button>
+      <button class="btn" id="next">Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- Fleet / MDM panel -->
+<div class="veil" id="fveil">
+  <div class="modal" style="width:min(680px,94vw)">
+    <div class="mhead"><h2>Fleet / MDM</h2><span class="x" id="fx">✕</span></div>
+    <div class="mbody">
+      <div id="dev-list" style="margin-bottom:18px"></div>
+      <div style="border-top:1px solid var(--line);padding-top:18px">
+        <label class="field">Enrol a device</label>
+        <div style="display:flex;gap:10px">
+          <input type="text" id="dev-name" placeholder="Device name (e.g. Twizzler)" style="flex:1" autocomplete="off">
+          <select id="dev-kind" style="padding:0 12px;border:1px solid var(--line2);border-radius:2px;background:var(--surface2);font-family:inherit;font-size:13px">
+            <option value="pc">PC</option><option value="phone">Phone</option><option value="kiosk">Kiosk</option><option value="helper">Helper</option>
+          </select>
+          <button class="btn" id="dev-enrol">Enrol</button>
+        </div>
+        <div id="enrol-out" style="display:none;margin-top:14px">
+          <div class="hint" style="margin-top:0">Run this on that device (PowerShell) to link it over the LAN:</div>
+          <div class="code" id="enrol-cmd">—</div>
+          <div class="waiting" id="enrol-wait"><i></i><span>Waiting for the device to check in…</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="mfoot"><button class="btn ghost" id="fclose">Close</button></div>
+  </div>
+</div>
+
+<script src="/labloader.js"></script>
+<script>
+  const $=id=>document.getElementById(id);
+  let _boot=LabLoader.overlay({label:'L.A.B Hub Manager'});
+  const fmt=(b,dp=1)=>{if(!b)return '0 B';const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1024&&i<u.length-1){b/=1024;i++}return b.toFixed(i?dp:0)+' '+u[i];};
+  const up=s=>{const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return (d?d+'d ':'')+h+'h '+m+'m';};
+
+  fetch('/api/identity').then(r=>r.json()).then(d=>{
+    $('node-id').innerHTML=`<b>${d.node}</b> · ${d.ip}`;
+    $('foot').textContent=`L.A.B HUB MANAGER · ${d.node} · ${d.version}`;
+    document.title=`${d.node} · L.A.B Manager`;
+  }).catch(()=>{});
+  fetch('/api/admin/list').then(r=>r.json()).then(a=>{ $('admin-count').textContent=`${a.filter(x=>x.paired).length} Paired`; }).catch(()=>{});
+  function refreshSql(){ fetch('/api/db/health').then(r=>r.json()).then(d=>{ const el=$('sql-st'); if(d.ok){ el.textContent='Online'; el.style.color='var(--steel)'; el.style.borderColor='var(--steel)'; } else { el.textContent='Connecting'; } }).catch(()=>{}); }
+  refreshSql(); setInterval(refreshSql, 5000);
+  function refreshDev(){ fetch('/api/devteam').then(r=>r.json()).then(d=>{ const el=$('dev-st'); el.textContent=`${d.crew.length} Agents`; el.style.color='var(--steel)'; el.style.borderColor='var(--steel)'; }).catch(()=>{}); }
+  refreshDev(); setInterval(refreshDev, 8000);
+
+  function render(s){
+    $('live').textContent='LIVE';
+    $('cpu').textContent=s.cpu; $('cpu-b').style.width=s.cpu+'%';
+    $('mem').textContent=s.mem.pct; $('mem-b').style.width=s.mem.pct+'%'; $('mem-u').textContent=`${fmt(s.mem.used)} / ${fmt(s.mem.total)}`;
+    $('lab').textContent=s.disk.lab.pct; $('lab-b').style.width=s.disk.lab.pct+'%'; $('lab-u').textContent=`${fmt(s.disk.lab.used)} / ${fmt(s.disk.lab.size)}`;
+    $('root').textContent=s.disk.root.pct; $('root-b').style.width=s.disk.root.pct+'%'; $('root-u').textContent=`${fmt(s.disk.root.used)} / ${fmt(s.disk.root.size)}`;
+    $('load').textContent=(s.load||[]).join('  ');
+    $('net').textContent=`↓${fmt(s.net.rx)} ↑${fmt(s.net.tx)}`;
+    $('uptime').textContent=up(s.uptime);
+    $('dk').textContent=s.docker?`Docker ${s.docker.running}/${s.docker.containers}`:'Docker off';
+    if(_boot){_boot.done();_boot=null;}
+  }
+  function connect(){const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='stats')render(m.data)}catch{}};ws.onclose=()=>{$('live').textContent='RECONNECTING';setTimeout(connect,3000)};}
+  fetch('/api/stats').then(r=>r.json()).then(render).catch(()=>{});connect();
+
+  // ---- onboard wizard ----
+  let step=1, token=null, poll=null;
+  const setStep=n=>{step=n;[1,2,3].forEach(i=>{$('step'+i).classList.toggle('on',i===n);$('s'+i).classList.toggle('on',i<=n)});
+    $('next').textContent=n===1?'Continue':n===3?'Done':'…';
+    $('next').style.display=n===2?'none':'inline-block';
+    $('cancel').style.display=n===3?'none':'inline-block';};
+  const openW=()=>{$('veil').classList.add('on');token=null;$('adm-name').value='';setStep(1);setTimeout(()=>$('adm-name').focus(),50);};
+  const closeW=()=>{$('veil').classList.remove('on');if(poll)clearInterval(poll);};
+  $('btn-onboard').onclick=openW; $('x').onclick=closeW; $('cancel').onclick=closeW;
+  $('next').onclick=async()=>{
+    if(step===1){
+      const name=$('adm-name').value.trim(); if(!name)return $('adm-name').focus();
+      const r=await fetch('/api/admin/onboard',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}).then(r=>r.json());
+      token=r.token; $('pair-cmd').textContent=r.pairCmd; setStep(2);
+      poll=setInterval(async()=>{
+        const s=await fetch('/api/admin/status/'+token).then(r=>r.json()).catch(()=>({}));
+        if(s.paired){clearInterval(poll);$('done-name').textContent=$('adm-name').value.trim()+' onboarded';$('done-pc').textContent='PC linked at '+(s.pc?s.pc.ip:'this machine');setStep(3);
+          fetch('/api/admin/list').then(r=>r.json()).then(a=>{$('admin-count').textContent=`${a.filter(x=>x.paired).length} Paired`;});}
+      },2000);
+    } else if(step===3){ closeW(); }
+  };
+  $('veil').onclick=e=>{if(e.target===$('veil'))closeW();};
+
+  // ---- Fleet / MDM ----
+  const stColor=s=>s==='online'?'var(--steel)':s==='offline'?'#c0392b':'var(--ink3)';
+  async function refreshFleet(){
+    const s=await fetch('/api/fleet/summary').then(r=>r.json()).catch(()=>null); if(!s)return;
+    const el=$('fleet-st');
+    if(s.total===0){el.textContent='Enrol';el.style.color='';el.style.borderColor='';}
+    else{el.textContent=`${s.online} Online`;el.style.color='var(--steel)';el.style.borderColor='var(--steel)';}
+  }
+  refreshFleet(); setInterval(refreshFleet,5000);
+  async function renderDevList(){
+    const list=await fetch('/api/fleet').then(r=>r.json()).catch(()=>[]);
+    $('dev-list').innerHTML=list.length?list.map(d=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line)">
+        <div><b style="letter-spacing:.4px">${d.name}</b><span style="color:var(--ink3);font-size:12px"> · ${d.kind} · ${d.os||'—'} ${d.ip?'· '+d.ip:''}</span></div>
+        <div style="display:flex;align-items:center;gap:14px">
+          <span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:${stColor(d.status)}">${d.status}</span>
+          <span data-del="${d.id}" style="cursor:pointer;color:var(--ink3);font-size:11px;text-transform:uppercase;letter-spacing:1px">Remove</span>
+        </div></div>`).join(''):'<div class="hint" style="margin-top:0">No devices enrolled yet.</div>';
+    $('dev-list').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await fetch('/api/fleet/'+b.dataset.del,{method:'DELETE'});renderDevList();refreshFleet();});
+  }
+  let fpoll=null;
+  const openF=()=>{$('fveil').classList.add('on');$('enrol-out').style.display='none';$('dev-name').value='';renderDevList();if(fpoll)clearInterval(fpoll);fpoll=setInterval(renderDevList,3000);};
+  const closeF=()=>{$('fveil').classList.remove('on');if(fpoll)clearInterval(fpoll);};
+  $('mod-fleet').onclick=openF; $('fx').onclick=closeF; $('fclose').onclick=closeF;
+  $('fveil').onclick=e=>{if(e.target===$('fveil'))closeF();};
+  $('dev-enrol').onclick=async()=>{
+    const name=$('dev-name').value.trim(); if(!name)return $('dev-name').focus();
+    const r=await fetch('/api/fleet/enroll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,kind:$('dev-kind').value})}).then(r=>r.json());
+    $('enrol-out').style.display='block'; $('enrol-cmd').textContent=`curl.exe -X POST ${r.checkinUrl}`;
+    $('enrol-wait').style.display='flex'; $('enrol-wait').innerHTML='<i></i><span>Waiting for the device to check in…</span>';
+    const chk=setInterval(async()=>{const list=await fetch('/api/fleet').then(r=>r.json());const d=list.find(x=>x.id===r.id);renderDevList();if(d&&d.status==='online'){clearInterval(chk);$('enrol-wait').innerHTML='<span style="color:var(--steel);font-weight:600">Device linked ✓</span>';refreshFleet();}},2000);
+  };
+</script>
+</body>
+</html>

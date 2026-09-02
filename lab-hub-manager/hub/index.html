@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>L.A.B Hub</title>
+<link rel="icon" href="/hub/icons/icon-192.png">
+<style>
+  :root{
+    --bg:#0a0c14; --panel:rgba(255,255,255,.045); --panel2:rgba(255,255,255,.075); --stroke:rgba(255,255,255,.09);
+    --txt:#f2f4fb; --txt2:#98a1ba; --a1:#9a86ff; --a2:#ff9e6b; --glass:blur(20px) saturate(140%);
+    --ok:#4ade80; --warm:#ffcf6f;
+    --disp:"Segoe UI Variable Display","Segoe UI",Inter,system-ui,sans-serif;
+    --mono:"Cascadia Code","SF Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--disp);color:var(--txt);min-height:100vh;-webkit-font-smoothing:antialiased;letter-spacing:-.006em;
+    background:radial-gradient(1200px 680px at 82% -10%,#1e1838 0,#0a0c14 52%) fixed;}
+  /* de-ai typographic craft: tight confident headings, mono labels */
+  .hi,.big,.hero .big,.phead h1,.gbox h1{font-weight:800;letter-spacing:-.028em}
+  .card h3,.set .l .s,.eyebrow{font-family:var(--mono)}
+  .wrap{max-width:1100px;margin:0 auto;padding:22px 22px 70px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:13px}
+  .logo{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,var(--a1),var(--a2));box-shadow:0 10px 34px -10px var(--a1)}
+  .logo svg{width:25px;height:25px;color:#0a0c14}
+  .hi{font-size:20px;font-weight:700}
+  .sub{font-size:12px;color:var(--txt2);margin-top:2px}
+  .nav{display:flex;gap:4px;background:var(--panel);border:1px solid var(--stroke);border-radius:12px;padding:4px;backdrop-filter:var(--glass)}
+  .nav button{appearance:none;border:0;background:transparent;color:var(--txt2);font:inherit;font-size:13px;font-weight:600;padding:8px 14px;border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:7px}
+  .nav button svg{width:15px;height:15px}
+  .nav button.on{background:var(--panel2);color:var(--txt)}
+  .acct{display:flex;align-items:center;gap:12px}
+  .clock{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+  .btn{appearance:none;border:1px solid var(--stroke);background:var(--panel);color:var(--txt);font:inherit;font-size:13px;padding:9px 15px;border-radius:11px;cursor:pointer;backdrop-filter:var(--glass)}
+  .btn:hover{background:var(--panel2)}
+  .btn.pri{border:0;background:linear-gradient(135deg,var(--a1),var(--a2));color:#0a0c14;font-weight:700}
+  .card{background:var(--panel);border:1px solid var(--stroke);border-radius:20px;padding:22px;backdrop-filter:var(--glass)}
+  .card h3{font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--txt2);font-weight:600;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+  .grid{display:grid;gap:16px;margin-top:20px}
+  .g2{grid-template-columns:1.1fr .9fr}
+  @media(max-width:800px){.g2{grid-template-columns:1fr}}
+  .view{display:none} .view.on{display:block}
+  .status{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--txt2)}
+  .status i{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok)}
+  .hero{grid-column:1/-1;background:linear-gradient(120deg,rgba(183,155,255,.16),rgba(111,180,255,.10));display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+  .hero .big{font-size:24px;font-weight:700}.hero .muted{color:var(--txt2);font-size:14px;margin-top:6px}
+  /* shared todo + calendar */
+  .row{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+  input[type=text],input[type=date]{flex:1;padding:11px 13px;background:rgba(0,0,0,.25);border:1px solid var(--stroke);border-radius:11px;color:var(--txt);font:inherit;font-size:14px}
+  input:focus{outline:none;border-color:var(--a1)}
+  .list{display:flex;flex-direction:column;gap:2px;max-height:340px;overflow-y:auto}
+  .item{display:flex;gap:11px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--stroke)}
+  .item:last-child{border-bottom:0}
+  .chk{width:20px;height:20px;border:1.6px solid var(--stroke);border-radius:6px;flex:none;cursor:pointer;display:grid;place-items:center}
+  .chk.done{background:var(--a1);border-color:var(--a1)}
+  .chk.done svg{width:12px;height:12px;color:#0a0c14}
+  .item .t{flex:1;font-size:14px}
+  .item.done .t{opacity:.5;text-decoration:line-through}
+  .item .who{font-size:11px;color:var(--txt2)}
+  .item .del{cursor:pointer;color:var(--txt2);opacity:0;font-size:16px}
+  .item:hover .del{opacity:1}
+  .ev{display:flex;gap:12px;align-items:center;padding:11px 4px;border-bottom:1px solid var(--stroke)}
+  .ev:last-child{border-bottom:0}
+  .ev .date{width:46px;flex:none;text-align:center}
+  .ev .date .d{font-size:19px;font-weight:800;line-height:1}.ev .date .m{font-size:10px;color:var(--txt2);text-transform:uppercase}
+  .ev .ttl{flex:1;font-size:14px;font-weight:600}.ev .tm{font-size:12px;color:var(--txt2)}
+  .empty{color:var(--txt2);font-size:13px;padding:14px 2px}
+  /* house map */
+  .house{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+  .room{border:1px solid var(--stroke);border-radius:16px;padding:16px;background:var(--panel);cursor:pointer;transition:.2s;position:relative;overflow:hidden;min-height:118px;display:flex;flex-direction:column;justify-content:space-between}
+  .room:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.2)}
+  .room.on{background:linear-gradient(160deg,rgba(255,207,111,.18),rgba(255,157,92,.05));border-color:rgba(255,207,111,.35)}
+  .room .bulb{width:30px;height:30px;color:var(--txt2)}
+  .room.on .bulb{color:var(--warm);filter:drop-shadow(0 0 12px rgba(255,207,111,.6))}
+  .room .nm{font-weight:700;font-size:15px}.room .st{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--txt2)}
+  .room.on .st{color:var(--warm)}
+  .room .drv{position:absolute;top:10px;right:12px;font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--txt2);opacity:.6;font-family:monospace}
+  .scenes{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .scene{border:1px solid var(--stroke);background:var(--panel);color:var(--txt);border-radius:99px;padding:7px 14px;cursor:pointer;font-size:12px}
+  .scene:hover{border-color:var(--a1)}
+  .note{background:rgba(0,0,0,.2);border:1px solid var(--stroke);border-radius:12px;padding:13px 15px;font-size:13px;color:var(--txt2);line-height:1.5}
+  /* installer */
+  .oschoice{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:20px 0}
+  @media(max-width:640px){.oschoice{grid-template-columns:1fr}}
+  .os{border:1px solid var(--stroke);border-radius:18px;padding:26px 20px;text-align:center;cursor:pointer;transition:.2s;background:var(--panel)}
+  .os:hover{transform:translateY(-3px);border-color:var(--a1);background:var(--panel2)}
+  .os svg{width:46px;height:46px;margin-bottom:14px;color:var(--txt)}
+  .os .n{font-size:17px;font-weight:700}.os .a{font-size:12px;color:var(--txt2);margin-top:4px}
+  .os .badge{display:inline-block;margin-top:12px;font-size:10px;letter-spacing:1px;text-transform:uppercase;border:1px solid var(--a1);color:var(--a1);border-radius:99px;padding:3px 10px}
+  .os .badge.soon{border-color:var(--txt2);color:var(--txt2)}
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}
+  @media(max-width:640px){.steps{grid-template-columns:1fr 1fr}}
+  .step{border:1px solid var(--stroke);border-radius:14px;padding:15px}
+  .step .n{font-family:monospace;color:var(--a1);font-size:12px}.step .t{font-weight:700;margin-top:6px;font-size:14px}.step .d{font-size:12px;color:var(--txt2);margin-top:4px;line-height:1.4}
+  /* settings */
+  .set{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid var(--stroke)}
+  .set:last-child{border-bottom:0}
+  .set .l{font-size:14px}.set .l .s{font-size:12px;color:var(--txt2);margin-top:2px}
+  .skins{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:6px}
+  .skin{display:flex;align-items:center;gap:10px;padding:9px;border:1px solid var(--stroke);border-radius:12px;cursor:pointer}
+  .skin:hover{background:var(--panel2)}.skin.active{outline:1px solid var(--a1)}
+  .skin .sw{width:26px;height:26px;border-radius:7px;flex:none;border:1px solid rgba(255,255,255,.15)}
+  .skin .nm{font-size:12px;font-weight:600}
+  footer{margin-top:34px;text-align:center;color:var(--txt2);font-size:12px}
+  /* account gate */
+  #gate{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;background:radial-gradient(900px 600px at 50% 0,#241a44 0,#0a0c14 60%)}
+  #gate.on{display:flex}
+  .gbox{width:min(400px,92vw);background:var(--panel);border:1px solid var(--stroke);border-radius:22px;padding:34px 30px;backdrop-filter:var(--glass);text-align:center}
+  .gbox .logo{margin:0 auto 16px}.gbox h1{font-size:22px;margin-bottom:4px}.gbox p{color:var(--txt2);font-size:13px;margin-bottom:22px}
+  .gbox input{width:100%;padding:13px 15px;margin-bottom:11px}
+  .gbox .btn.pri{width:100%;padding:13px;margin-top:6px;font-size:15px}
+  .switch{margin-top:16px;font-size:13px;color:var(--txt2)}.switch a{color:var(--a1);cursor:pointer}
+  .err{color:#ff9a9a;font-size:13px;min-height:18px;margin-bottom:4px}
+  /* wizard modal */
+  #wz{position:fixed;inset:0;z-index:150;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(4,5,10,.72);backdrop-filter:blur(6px)}
+  #wz.on{display:flex}
+  .wzbox{width:min(520px,96vw);background:#12131f;border:1px solid var(--stroke);border-radius:22px;padding:30px}
+  .wzbox h2{font-size:22px;margin-bottom:6px}.wzbox p{color:var(--txt2);font-size:14px;line-height:1.55;margin-bottom:18px}
+  .wzbox .x{float:right;cursor:pointer;color:var(--txt2);font-size:22px;margin-top:-8px}
+  .cmd{background:#0a0c14;border:1px solid var(--stroke);border-radius:10px;padding:12px 14px;font-family:monospace;font-size:12px;color:#cfd6e6;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:12px 0}
+</style>
+</head>
+<body>
+<!-- account gate -->
+<div id="gate">
+  <div class="gbox">
+    <div class="logo"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="24" height="24" rx="3"/><rect x="11" y="11" width="10" height="10"/></svg></div>
+    <h1 id="g-title">Welcome to L.A.B</h1>
+    <p id="g-sub">Create your account for the family Hub.</p>
+    <div class="err" id="g-err"></div>
+    <input type="text" id="g-name" placeholder="Your name" autocomplete="off">
+    <input type="password" id="g-pin" placeholder="PIN (4–8 digits)" inputmode="numeric">
+    <button class="btn pri" id="g-go">Create account</button>
+    <div class="switch" id="g-switch">Already set up? <a id="g-toggle">Log in</a></div>
+  </div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
+  <header>
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="24" height="24" rx="3"/><rect x="11" y="11" width="10" height="10"/></svg></div>
+      <div><div class="hi" id="greet">The L.A.B</div><div class="sub" id="hosted">your family hub</div></div>
+    </div>
+    <nav class="nav" id="nav">
+      <button data-view="home" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11 12 4l8 7"/><path d="M6 10v9h12v-9"/></svg>Home</button>
+      <button data-view="house"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10 12 3l9 7"/><path d="M6 9v11h12V9"/><rect x="10" y="13" width="4" height="7"/></svg>House</button>
+      <button data-view="get"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M5 20h14"/></svg>Get the App</button>
+      <button data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg>Settings</button>
+    </nav>
+    <div class="acct"><div class="clock" id="clock">—</div></div>
+  </header>
+
+  <!-- HOME (shared, global) -->
+  <div class="view on" id="v-home">
+    <div class="grid g2">
+      <div class="card hero">
+        <div><div class="big" id="hero-hi">The Volkwyn L.A.B</div><div class="muted">The shared family view — the same for everyone. Your personal Hub lives in the app.</div></div>
+        <div class="status"><i></i><span id="conn">Connected to your L.A.B server</span></div>
+      </div>
+      <div class="card">
+        <h3>Shared to-do <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">everyone sees this</span></h3>
+        <div class="row"><input type="text" id="td-in" placeholder="Add something for the family…"><button class="btn pri" id="td-add">Add</button></div>
+        <div class="list" id="td-list"></div>
+      </div>
+      <div class="card">
+        <h3>Shared calendar</h3>
+        <div class="row"><input type="text" id="ev-title" placeholder="Event…" style="flex:2"><input type="date" id="ev-day" style="flex:1"></div>
+        <div class="row"><button class="btn pri" id="ev-add" style="width:100%">Add to family calendar</button></div>
+        <div class="list" id="ev-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOUSE (3D map + configs) -->
+  <div class="view" id="v-house">
+    <div class="grid">
+      <div class="card">
+        <h3>The House <span id="house-cnt" style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none"></span></h3>
+        <div class="house" id="house"></div>
+        <div class="scenes" id="scenes"></div>
+      </div>
+      <div class="note" id="house-note">Tap a room to toggle it. This is the live map of your home, driven by the L.A.B Conductor — our own device engine. Full 3D room-scan mapping arrives with the camera build; for now this is the room + device layer.</div>
+    </div>
+  </div>
+
+  <!-- GET THE APP (installer page) -->
+  <div class="view" id="v-get">
+    <div class="card">
+      <h3>Get the L.A.B app</h3>
+      <p style="color:var(--txt2);font-size:14px;line-height:1.55;max-width:60ch">The web view is the shared family hub. Your <b>personal</b> Hub — Dashboard, The Sauce, App Store, your stats — is a real desktop app, custom-built for your machine. Pick your system:</p>
+      <div class="oschoice" id="oschoice"></div>
+      <h3 style="margin-top:8px">How it works</h3>
+      <div class="steps">
+        <div class="step"><div class="n">01</div><div class="t">Download</div><div class="d">Grab the installer for your OS.</div></div>
+        <div class="step"><div class="n">02</div><div class="t">Sign in</div><div class="d">Log in or create your account in the wizard.</div></div>
+        <div class="step"><div class="n">03</div><div class="t">It reads your PC</div><div class="d">The wizard checks how you use your machine — work, creative, gaming — privately.</div></div>
+        <div class="step"><div class="n">04</div><div class="t">Personalized app</div><div class="d">Our agents tailor your Hub around that, then it's yours.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="view" id="v-settings">
+    <div class="grid g2">
+      <div class="card">
+        <h3>Account</h3>
+        <div class="set"><div class="l">Signed in as<div class="s" id="s-acct">—</div></div><button class="btn" id="logout">Sign out</button></div>
+        <div class="set"><div class="l">Server<div class="s" id="s-node">—</div></div><span class="status"><i></i>online</span></div>
+        <div class="set"><div class="l">Admin Portal<div class="s">Approvals, AI controls, the neural map (needs your USB key)</div></div><a class="btn" href="/admin/" target="_blank">Open</a></div>
+        <div class="set"><div class="l">Off-home access<div class="s">Let family reach the Hub from outside (e.g. your brother)</div></div><span class="s" style="color:var(--warm)">Tunnel — staged</span></div>
+      </div>
+      <div class="card">
+        <h3>Theme <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">made by your AI</span></h3>
+        <div class="skins" id="skins"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer id="foot">L.A.B Hub · shared family surface · distributed from your server</footer>
+</div>
+
+<!-- wizard modal -->
+<div id="wz"><div class="wzbox" id="wzbody"></div></div>
+
+<script src="/hub/labloader.js"></script>
+<script>
+  const $=id=>document.getElementById(id);
+  const api=(p,opts)=>fetch(p,opts).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'error');return j;});
+  const store={get:k=>{try{return JSON.parse(localStorage.getItem('lab_'+k))}catch{return null}},set:(k,v)=>localStorage.setItem('lab_'+k,JSON.stringify(v)),del:k=>localStorage.removeItem('lab_'+k)};
+  const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  let boot=LabLoader.overlay({label:'L.A.B Hub',bg:'#0a0c14',color:'#b79bff'});
+  let me=store.get('account');
+
+  // ---- account gate ----
+  let mode='create';
+  function showGate(){ $('gate').classList.add('on'); $('app').style.display='none'; }
+  function setMode(m){ mode=m;
+    $('g-title').textContent=m==='create'?'Welcome to L.A.B':'Welcome back';
+    $('g-sub').textContent=m==='create'?'Create your account for the family Hub.':'Log in to your Hub.';
+    $('g-go').textContent=m==='create'?'Create account':'Log in';
+    $('g-switch').innerHTML=m==='create'?'Already set up? <a id="g-toggle">Log in</a>':'New here? <a id="g-toggle">Create account</a>';
+    $('g-toggle').onclick=()=>setMode(m==='create'?'login':'create'); }
+  $('g-toggle').onclick=()=>setMode('login');
+  $('g-go').onclick=async()=>{
+    const name=$('g-name').value.trim(),pin=$('g-pin').value.trim(); $('g-err').textContent='';
+    try{ const a=await api('/api/accounts'+(mode==='login'?'/login':''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,pin})});
+      store.set('account',a); me=a; api('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:a.id,type:'login',payload:{name:a.name}})}).catch(()=>{});
+      $('gate').classList.remove('on'); start();
+    }catch(e){ $('g-err').textContent=e.message; }
+  };
+
+  // ---- nav ----
+  document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b));
+    ['home','house','get','settings'].forEach(v=>$('v-'+v).classList.toggle('on',v===b.dataset.view));
+    if(b.dataset.view==='house') loadHouse();
+    window.scrollTo(0,0);
+  });
+
+  // ---- clock ----
+  function tick(){ const d=new Date(); $('clock').textContent=d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
+
+  // ---- shared to-do ----
+  async function loadTodos(){
+    const list=await api('/api/shared/todos').catch(()=>[]);
+    $('td-list').innerHTML=list.length?list.map(t=>`<div class="item ${t.done?'done':''}" data-id="${t.id}">
+      <div class="chk ${t.done?'done':''}" data-act="toggle">${t.done?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5 11-11"/></svg>':''}</div>
+      <div class="t">${esc(t.text)}</div>${t.by_name?`<div class="who">${esc(t.by_name)}</div>`:''}<div class="del" data-act="del">×</div></div>`).join(''):'<div class="empty">Nothing yet — add the first family to-do.</div>';
+    $('td-list').querySelectorAll('.item').forEach(el=>{
+      el.querySelector('[data-act=toggle]').onclick=async()=>{ await api('/api/shared/todos/'+el.dataset.id+'/toggle',{method:'POST'}); loadTodos(); };
+      el.querySelector('[data-act=del]').onclick=async()=>{ await api('/api/shared/todos/'+el.dataset.id,{method:'DELETE'}); loadTodos(); };
+    });
+  }
+  async function addTodo(){ const t=$('td-in').value.trim(); if(!t)return; $('td-in').value='';
+    await api('/api/shared/todos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,by:me&&me.name})}); loadTodos(); }
+  $('td-add').onclick=addTodo; $('td-in').addEventListener('keydown',e=>{if(e.key==='Enter')addTodo();});
+
+  // ---- shared calendar ----
+  const MON=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  async function loadEvents(){
+    const list=await api('/api/shared/events').catch(()=>[]);
+    $('ev-list').innerHTML=list.length?list.map(e=>{const d=new Date(e.day+'T00:00');return `<div class="ev" data-id="${e.id}">
+      <div class="date"><div class="d">${d.getDate()}</div><div class="m">${MON[d.getMonth()]}</div></div>
+      <div style="flex:1"><div class="ttl">${esc(e.title)}</div>${e.by_name?`<div class="tm">${esc(e.by_name)}</div>`:''}</div>
+      <div class="del" data-act="del">×</div></div>`;}).join(''):'<div class="empty">No upcoming events. Add one above.</div>';
+    $('ev-list').querySelectorAll('[data-act=del]').forEach(b=>b.onclick=async()=>{ await api('/api/shared/events/'+b.closest('.ev').dataset.id,{method:'DELETE'}); loadEvents(); });
+  }
+  $('ev-add').onclick=async()=>{ const title=$('ev-title').value.trim(),day=$('ev-day').value; if(!title||!day)return;
+    $('ev-title').value=''; await api('/api/shared/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,day,by:me&&me.name})}); loadEvents(); };
+
+  // ---- house map ----
+  const bulb=`<svg class="bulb" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 3a9 9 0 0 0-5 16.5V23h10v-3.5A9 9 0 0 0 16 3z"/><path d="M12 27h8M13 30h6"/></svg>`;
+  async function loadHouse(){
+    const rooms=await api('/api/kiosk/rooms').catch(()=>[]);
+    $('house-cnt').textContent=rooms.length+' rooms · '+rooms.filter(r=>r.on).length+' on';
+    $('house').innerHTML=rooms.map(r=>`<div class="room ${r.on?'on':''}" data-id="${r.id}"><div class="drv">${esc(r.driver||'')}</div>${bulb}
+      <div><div class="nm">${esc(r.name)}</div><div class="st">${r.on?'On':'Off'}${r.online===false?' · offline':''}</div></div></div>`).join('');
+    $('house').querySelectorAll('.room').forEach(el=>el.onclick=async()=>{ el.classList.toggle('on'); await api('/api/kiosk/rooms/'+el.dataset.id+'/toggle',{method:'POST'}); loadHouse(); });
+    const scenes=await api('/api/conductor/scenes').catch(()=>[]);
+    $('scenes').innerHTML='<span style="color:var(--txt2);font-size:12px;align-self:center;margin-right:4px">Scenes:</span>'+scenes.map(s=>`<button class="scene" data-s="${s.id}">${esc(s.name)}</button>`).join('');
+    $('scenes').querySelectorAll('.scene').forEach(b=>b.onclick=async()=>{ await api('/api/conductor/scenes/'+b.dataset.s+'/run',{method:'POST'}); loadHouse(); });
+  }
+
+  // ---- installer ----
+  const OS_ICON={
+    win:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10.5 4.5v7H3zM10.5 12.5v7L3 18.5v-6zM11.5 4.3 21 3v8.5h-9.5zM21 12.5V21l-9.5-1.3v-7.2z"/></svg>`,
+    mac:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.3 12.9c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.8-3-.8c-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7 2-1.1 2.8-2.2c.9-1.3 1.2-2.5 1.3-2.6-.1 0-2.5-1-2.5-3.8zM14 5.9c.7-.8 1.1-2 1-3.1-1 0-2.1.7-2.8 1.5-.6.7-1.1 1.8-1 2.9 1.1.1 2.2-.5 2.8-1.3z"/></svg>`,
+    linux:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c-2 0-3 1.8-3 4 0 1.3.3 2 .3 3.2 0 1-1.8 2.4-2.6 4.3-.8 1.9-1.7 3.7-1.2 4.6.5.8 1.6.3 2.6.9.9.6 1.9 1.4 3.9 1.4s3-.8 3.9-1.4c1-.6 2.1-.1 2.6-.9.5-.9-.4-2.7-1.2-4.6-.8-1.9-2.6-3.3-2.6-4.3 0-1.2.3-1.9.3-3.2 0-2.2-1-4-3-4zm-1.4 5.2c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9zm2.8 0c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9z"/></svg>`
+  };
+  async function loadTargets(){
+    const targets=await api('/api/app/targets').catch(()=>[]);
+    $('oschoice').innerHTML=targets.map(t=>`<div class="os" data-os="${t.os}"><div>${OS_ICON[t.os]||''}</div>
+      <div class="n">${esc(t.label)}</div><div class="a">${t.os==='win'?'Windows 10 / 11 · x64':t.os==='mac'?'macOS · Apple silicon + Intel':'AppImage · .deb'}</div>
+      <div class="badge ${t.build?'':'soon'}">${t.build?'Download':'Get the wizard'}</div></div>`).join('');
+    $('oschoice').querySelectorAll('.os').forEach(el=>el.onclick=()=>openWizard(el.dataset.os, targets.find(t=>t.os===el.dataset.os)));
+  }
+  function openWizard(os, t){
+    const label=t?t.label:os;
+    const hasBuild=t&&t.build;
+    $('wzbody').innerHTML=`<span class="x" onclick="document.getElementById('wz').classList.remove('on')">✕</span>
+      <h2>Install L.A.B for ${esc(label)}</h2>
+      <p>${hasBuild?'Your native app is ready. Download it, run it, and sign in — it personalises itself to this machine on first launch.':'The native build for '+esc(label)+' is compiled in CI (one clean binary per OS). Meanwhile, grab the setup wizard — it creates your account, analyses how you use this PC, and hands the report to your L.A.B agents so your app is ready the moment it lands.'}</p>
+      ${hasBuild?`<a class="btn pri" style="display:inline-block" href="/app/download/${os}">Download the app</a>`:`
+        <a class="btn pri" style="display:inline-block" href="/app/wizard/${os}">Download setup wizard</a>
+        <div class="cmd" id="wz-cmd"></div>`}`;
+    if(!hasBuild){
+      const host=location.host;
+      $('wz-cmd').textContent = os==='win'
+        ? `# Windows — run in PowerShell:\niwr http://${host}/app/wizard/win -OutFile lab-setup.ps1 ; ./lab-setup.ps1`
+        : `# ${label} — run in a terminal:\ncurl -fsSL http://${host}/app/wizard/${os} -o lab-setup.sh && sh lab-setup.sh`;
+    }
+    $('wz').classList.add('on');
+  }
+  $('wz').onclick=e=>{ if(e.target.id==='wz') $('wz').classList.remove('on'); };
+
+  // ---- skins ----
+  const SKIN_VARS=['--bg','--panel','--panel2','--stroke','--txt','--txt2','--a1','--a2'];
+  function applySkin(v){ const r=document.documentElement.style; if(!v){SKIN_VARS.forEach(k=>r.removeProperty(k));return;} Object.entries(v).forEach(([k,x])=>{if(SKIN_VARS.includes(k))r.setProperty(k,x);}); }
+  async function loadSkins(){
+    const g=await api('/api/hub/generations').catch(()=>({skins:[]}));
+    const cur=store.get('skin');
+    const def=`<div class="skin ${!cur?'active':''}" data-skin="default"><div class="sw" style="background:linear-gradient(135deg,#b79bff,#6fb4ff)"></div><div class="nm">Default</div></div>`;
+    $('skins').innerHTML=def+(g.skins||[]).map(s=>{const v=(s.payload&&s.payload.vars)||{};return `<div class="skin ${cur===s.id?'active':''}" data-skin="${s.id}"><div class="sw" style="background:linear-gradient(135deg,${v['--a1']||'#888'},${v['--a2']||'#555'})"></div><div class="nm">${esc(s.title)}</div></div>`;}).join('');
+    $('skins').querySelectorAll('.skin').forEach(el=>el.onclick=()=>{
+      const id=el.dataset.skin;
+      if(id==='default'){store.del('skin');store.del('skinvars');applySkin(null);}
+      else{const s=(g.skins||[]).find(x=>x.id===id);if(s&&s.payload){store.set('skin',id);store.set('skinvars',s.payload.vars);applySkin(s.payload.vars);}}
+      loadSkins();
+    });
+  }
+  try{const sv=store.get('skinvars');if(sv)applySkin(sv);}catch{}
+
+  // ---- start ----
+  async function start(){
+    $('app').style.display='block';
+    $('greet').textContent=`Hi ${me.name}`;
+    $('s-acct').textContent=me.name;
+    tick(); setInterval(tick,1000);
+    try{const id=await api('/api/identity'); $('hosted').textContent='hosted by '+id.node; $('s-node').textContent=id.node; $('foot').textContent='L.A.B Hub · shared family surface · from '+id.node;}catch{}
+    loadTodos(); loadEvents(); loadTargets(); loadSkins();
+    setInterval(loadTodos,15000); setInterval(loadEvents,20000);
+    api('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:me.id,type:'page',payload:{page:'web-hub'}})}).catch(()=>{});
+    if(boot){boot.done();boot=null;}
+  }
+  $('logout').onclick=()=>{ store.del('account'); location.reload(); };
+
+  if(me){ start(); } else { setMode('create'); showGate(); if(boot){boot.done();boot=null;} }
+</script>
+</body>
+</html>

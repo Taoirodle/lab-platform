@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>L.A.B Admin</title>
+<style>
+  :root{--bg:#e8eaee;--surface:#fff;--surface2:#f3f5f8;--line:#d3d8e0;--line2:#bcc3cf;--ink:#12151b;--ink2:#5b6472;--ink3:#8b93a1;--accent:#1b2330;--steel:#2f5fd0;--steel2:#6f97e8;--ok:#1f9d55;--bad:#c0392b;--amber:#c67c1a}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:"Segoe UI",Inter,system-ui,sans-serif;font-size:14px;min-height:100vh}
+  .mono{font-variant-numeric:tabular-nums;font-family:"Cascadia Code","SF Mono",Consolas,monospace}
+  header{background:var(--surface);border-bottom:1px solid var(--line2);height:62px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;position:sticky;top:0;z-index:5}
+  .brand{display:flex;align-items:center;gap:12px}
+  .mark{width:30px;height:30px;color:var(--ink)}
+  .wm{font-weight:700;letter-spacing:2px;font-size:14px}
+  .right{text-align:right;font-size:12px;color:var(--ink2);line-height:1.5}
+  .right b{color:var(--ink)}
+  .conn{display:inline-flex;align-items:center;gap:6px;font-size:11px;letter-spacing:1.4px;text-transform:uppercase}
+  .conn i{width:7px;height:7px;background:var(--ink3)}
+  .conn.ok i{background:var(--steel);box-shadow:0 0 0 0 rgba(47,95,208,.5);animation:pulse 2.4s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(47,95,208,.45)}70%{box-shadow:0 0 0 6px rgba(47,95,208,0)}100%{box-shadow:0 0 0 0 rgba(47,95,208,0)}}
+  main{max-width:1080px;margin:0 auto;padding:24px 26px 50px}
+  .lbl{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--ink3);font-weight:600;margin:26px 2px 12px;display:flex;justify-content:space-between;align-items:baseline}
+  .lbl:first-child{margin-top:6px}
+  .lbl .hint{text-transform:none;letter-spacing:.2px;font-weight:400;color:var(--ink3)}
+  .card{background:var(--surface);border:1px solid var(--line2)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+  /* stat tiles */
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  @media(max-width:820px){.tiles{grid-template-columns:1fr 1fr}}
+  .tile{background:var(--surface);border:1px solid var(--line2);padding:16px 18px;position:relative;overflow:hidden}
+  .tile .k{font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--ink3);font-weight:600}
+  .tile .v{font-size:30px;font-weight:700;margin-top:8px;letter-spacing:-.5px}
+  .tile .u{font-size:12px;color:var(--ink2);margin-top:2px}
+  .tile .spark{position:absolute;right:0;bottom:0;width:64px;height:34px;opacity:.5}
+  /* charts */
+  .chart{padding:16px 18px}
+  .chart h4{font-size:12px;letter-spacing:.4px;font-weight:700;margin-bottom:2px}
+  .chart .cap{font-size:11px;color:var(--ink3);margin-bottom:12px}
+  .legend{display:flex;gap:14px;font-size:11px;color:var(--ink2);margin-top:10px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:9px;height:9px}
+  svg .bar{transform-box:fill-box;transform-origin:bottom center}
+  svg .bar.anim{animation:grow .55s cubic-bezier(.2,.85,.25,1) both}
+  @keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+  .hrow{display:flex;align-items:center;gap:10px;margin:7px 0}
+  .hrow .s{width:16px;font-size:11px;color:var(--ink3);text-align:right;flex:none}
+  .htrack{flex:1;height:14px;background:var(--surface2);position:relative;overflow:hidden}
+  .hfill{position:absolute;inset:0 auto 0 0;transform-origin:left center}
+  .hfill.anim{animation:widen .7s cubic-bezier(.2,.85,.25,1) both}
+  @keyframes widen{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+  .hrow .c{width:26px;font-size:11px;color:var(--ink2);flex:none;text-align:left}
+  /* telemetry strip */
+  .strip{display:flex;height:20px;border:1px solid var(--line2);overflow:hidden}
+  .strip .seg{height:100%;transform-origin:left center}
+  .strip .seg.anim{animation:widen .8s cubic-bezier(.2,.85,.25,1) both}
+  .striplg{display:flex;flex-wrap:wrap;gap:14px;font-size:11px;color:var(--ink2);margin-top:10px}
+  .striplg span{display:inline-flex;align-items:center;gap:6px}
+  .striplg i{width:9px;height:9px}
+  /* upgrades feed */
+  .up{display:flex;align-items:flex-start;gap:12px;padding:13px 20px;border-bottom:1px solid var(--line)}
+  .up:last-child{border-bottom:0}
+  .ag{width:30px;height:30px;flex:none;border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:var(--accent);background:var(--surface2)}
+  .up .body{flex:1;min-width:0}
+  .up .t{font-weight:600;letter-spacing:.2px}
+  .up .p{font-size:11px;color:var(--ink3);margin-top:3px;font-family:"Cascadia Code","SF Mono",Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .up .meta{display:flex;align-items:center;gap:8px;margin-top:6px}
+  .chip{font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:2px 7px;border:1px solid var(--line2);color:var(--ink2)}
+  .chip.auto{color:var(--ok);border-color:#bfe3cd}
+  .chip.appr{color:var(--steel);border-color:#c3d3f4}
+  .chip.pend{color:var(--amber);border-color:#e8d3b0}
+  .chip.rej{color:var(--bad);border-color:#e8c3c0}
+  .up .sg{margin-left:auto;font-size:11px;font-weight:700;color:var(--ink3)}
+  .up .sg.hi{color:var(--bad)}
+  /* approvals */
+  .apr{padding:16px 20px;border-bottom:1px solid var(--line)}
+  .apr:last-child{border-bottom:0}
+  .apr .top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+  .apr .ttl{font-weight:700;letter-spacing:.3px}
+  .apr .meta{font-size:11px;color:var(--ink3);text-transform:uppercase;letter-spacing:1px;margin-top:3px}
+  .apr .pth{font-size:11px;color:var(--ink3);margin-top:4px;font-family:"Cascadia Code","SF Mono",Consolas,monospace}
+  .sig{font-size:11px;font-weight:700;padding:3px 9px;border:1px solid var(--line2);white-space:nowrap}
+  .sig.hi{color:var(--bad);border-color:var(--bad)}
+  .apr .sum{font-size:13px;color:var(--ink2);margin:9px 0 12px}
+  .btns{display:flex;gap:8px}
+  .btn{appearance:none;border:1px solid var(--accent);background:var(--accent);color:#fff;font:600 11px "Segoe UI";letter-spacing:1.2px;text-transform:uppercase;padding:9px 16px;cursor:pointer}
+  .btn:hover{background:#000}
+  .btn.rej{border-color:var(--bad);color:var(--bad);background:#fff}
+  .btn.rej:hover{background:#fdeeee}
+  .empty{padding:28px;text-align:center;color:var(--ink3);font-size:13px}
+  /* controls */
+  .ctl{padding:16px 22px;border-bottom:1px solid var(--line)}
+  .ctl:last-child{border-bottom:0}
+  .ctl .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+  .ctl .name{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--ink2);font-weight:600}
+  .ctl .val{font-weight:700;font-size:16px}
+  input[type=range]{width:100%;accent-color:var(--accent);height:4px}
+  .toggle{position:relative;width:46px;height:26px;cursor:pointer;flex:none}
+  .toggle input{opacity:0;width:0;height:0}
+  .toggle .tr{position:absolute;inset:0;background:var(--line2);transition:.2s}
+  .toggle .tr::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;transition:.2s}
+  .toggle input:checked+.tr{background:var(--bad)}
+  .toggle input:checked+.tr::after{transform:translateX(20px)}
+  /* fleet */
+  .dev{display:flex;justify-content:space-between;align-items:center;padding:12px 22px;border-bottom:1px solid var(--line)}
+  .dev:last-child{border-bottom:0}
+  .st{font-size:10px;letter-spacing:1.3px;text-transform:uppercase}
+  .st.online{color:var(--steel)}.st.offline{color:var(--bad)}.st.pending{color:var(--ink3)}
+  /* Neural ledger map */
+  .neural{position:relative;height:460px;background:#0b0e1a;border:1px solid var(--line2);overflow:hidden;cursor:grab}
+  .neural:active{cursor:grabbing}
+  .neural canvas{display:block;width:100%;height:100%}
+  .nhud{position:absolute;top:12px;left:14px;z-index:3;font-family:"Cascadia Code",Consolas,monospace;font-size:11px;color:#8b96b3;letter-spacing:1px;text-transform:uppercase;pointer-events:none}
+  .nhud b{color:#dfe6f5}
+  .ninfo{position:absolute;right:12px;top:12px;z-index:3;width:250px;background:rgba(12,15,26,.92);border:1px solid rgba(255,255,255,.14);padding:12px 14px;font-size:12px;color:#c3ccdf;display:none}
+  .ninfo.on{display:block}
+  .ninfo .t{font-weight:700;color:#fff;margin-bottom:5px}
+  .ninfo .k{font-family:"Cascadia Code",Consolas,monospace;font-size:10px;color:#8b96b3;text-transform:uppercase;letter-spacing:1px}
+  .nlegend{position:absolute;bottom:10px;left:14px;z-index:3;display:flex;gap:14px;font-family:"Cascadia Code",Consolas,monospace;font-size:10px;color:#8b96b3;letter-spacing:.5px}
+  .nlegend span{display:inline-flex;align-items:center;gap:6px}
+  .nlegend i{width:8px;height:8px;border-radius:50%}
+  /* USB-key gate */
+  #keygate{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;background:var(--bg)}
+  #keygate.on{display:flex}
+  .kg{width:min(460px,92vw);background:var(--surface);border:1px solid var(--line2);padding:38px 34px;text-align:center}
+  .kg .klock{width:52px;height:52px;color:var(--accent);margin:0 auto 16px}
+  .kg h1{font-size:20px;font-weight:700}
+  .kg p{color:var(--ink2);font-size:13px;margin:8px 0 22px;line-height:1.55}
+  .kg .drop{border:1px dashed var(--line2);background:var(--surface2);padding:26px;cursor:pointer;display:block}
+  .kg .drop.hot{border-color:var(--accent);background:#eef1f6}
+  .kg .drop svg{width:30px;height:30px;color:var(--ink3)}
+  .kg .drop .t{font-weight:600;margin-top:10px}
+  .kg .drop .s{font-size:12px;color:var(--ink3);margin-top:4px}
+  .kg .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:14px}
+  .kg .hint{font-size:12px;color:var(--ink3);margin-top:16px}
+  .kg .hint a{color:var(--steel);cursor:pointer;text-decoration:none}
+  #kg-lock{font-size:11px;color:var(--ink3);cursor:pointer;letter-spacing:1px;text-transform:uppercase;margin-top:4px;display:inline-block}
+  #kg-lock:hover{color:var(--bad)}
+</style>
+</head>
+<body>
+<!-- USB-key unlock gate -->
+<div id="keygate">
+  <div class="kg">
+    <svg class="klock" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="14" width="18" height="14" rx="2"/><path d="M11 14v-4a5 5 0 0 1 10 0v4"/><circle cx="16" cy="21" r="1.6"/></svg>
+    <h1>Unlock the Admin Portal</h1>
+    <p>This Portal is protected by your physical L.A.B key. Insert your USB key and select your <b>.key</b> file to continue.</p>
+    <label class="drop" id="kg-drop">
+      <input type="file" id="kg-file" accept=".key,application/json,application/octet-stream" style="display:none">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="16" r="6"/><path d="M17 16h11M24 16v5M28 16v4"/><circle cx="11" cy="16" r="2"/></svg>
+      <div class="t">Select your key file</div>
+      <div class="s">or drag it here from your USB drive</div>
+    </label>
+    <div class="err" id="kg-err"></div>
+    <div class="hint">Don't have a key yet? <a href="/install/">Run the installer</a></div>
+  </div>
+</div>
+<header>
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="26" height="26"/><rect x="10" y="10" width="12" height="12"/><line x1="3" y1="3" x2="10" y2="10"/><line x1="29" y1="3" x2="22" y2="10"/><line x1="3" y1="29" x2="10" y2="22"/><line x1="29" y1="29" x2="22" y2="22"/></svg>
+    <div class="wm">L.A.B ADMIN</div>
+  </div>
+  <div class="right">
+    <div class="conn" id="conn"><i></i><span>Connecting</span></div>
+    <div id="who">—</div>
+    <a id="kg-lock" title="Lock the Portal and remove this session">Lock</a>
+  </div>
+</header>
+<main>
+  <div class="lbl">Overview <span class="hint" id="ov-when">live</span></div>
+  <div class="tiles" id="tiles">
+    <div class="tile"><div class="k">Total updates</div><div class="v mono" data-t="total">0</div><div class="u">all time</div></div>
+    <div class="tile"><div class="k">Auto-shipped</div><div class="v mono" data-t="shipped">0</div><div class="u" id="u-rate">hands-off</div></div>
+    <div class="tile"><div class="k">Awaiting you</div><div class="v mono" data-t="pending">0</div><div class="u">need approval</div></div>
+    <div class="tile"><div class="k">Code shipped</div><div class="v mono" data-t="bytes">0</div><div class="u">by the Dev Team</div></div>
+  </div>
+
+  <div class="grid2">
+    <div>
+      <div class="card chart">
+        <h4>Ship activity</h4><div class="cap">Updates delivered per day · last 14 days</div>
+        <svg id="ch-ship" viewBox="0 0 560 150" width="100%" height="150" preserveAspectRatio="none"></svg>
+        <div class="legend"><span><i style="background:var(--steel)"></i>Auto-shipped</span><span><i style="background:var(--accent)"></i>Approved by you</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="card chart">
+        <h4>Significance distribution</h4><div class="cap">How the QA agent scores updates · 8+ needs your call</div>
+        <div id="ch-sig"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card chart" style="margin-top:16px">
+    <h4>Telemetry signal</h4><div class="cap">What the platform is learning from right now</div>
+    <div class="strip" id="ch-tel"></div>
+    <div class="striplg" id="tel-lg"></div>
+  </div>
+
+  <div class="lbl">The Ledger Network <span class="hint">the AI's living memory · drag to orbit · click a node to expand</span></div>
+  <div class="neural" id="neural">
+    <canvas id="ncanvas"></canvas>
+    <div class="nhud">LEDGER NEURAL MAP · <b id="ncount">…</b></div>
+    <div class="ninfo" id="ninfo"></div>
+    <div class="nlegend">
+      <span><i style="background:#e8b445c;background:#e8b445"></i>team</span>
+      <span><i style="background:#2f8fd0;background:#3d9ce0"></i>client</span>
+      <span><i style="background:#8a5fd0"></i>admin</span>
+      <span><i style="background:#3dc98a"></i>kiosk</span>
+    </div>
+  </div>
+
+  <div class="lbl">AI Upgrades <span class="hint">what the Dev Team shipped, with update paths</span></div>
+  <div class="card" id="upgrades"><div class="empty">Loading…</div></div>
+
+  <div class="lbl">Approvals <span class="hint">high-significance updates awaiting your call</span></div>
+  <div class="card" id="approvals"><div class="empty">Loading…</div></div>
+
+  <div class="grid2">
+    <div>
+      <div class="lbl">AI Controls</div>
+      <div class="card">
+        <div class="ctl">
+          <div class="row"><span class="name">Activity</span><span class="val mono" id="v-act">—</span></div>
+          <input type="range" id="act" min="1" max="10" step="1">
+        </div>
+        <div class="ctl">
+          <div class="row"><span class="name">Aggressiveness</span><span class="val mono" id="v-agg">—</span></div>
+          <input type="range" id="agg" min="1" max="10" step="1">
+        </div>
+        <div class="ctl">
+          <div class="row"><span class="name">Pause building</span>
+            <label class="toggle"><input type="checkbox" id="pause"><span class="tr"></span></label></div>
+          <div style="font-size:12px;color:var(--ink3)">When paused, the Dev Team stops shipping — nothing builds until you resume.</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="lbl">Fleet</div>
+      <div class="card" id="fleet"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
+</main>
+
+<script src="/labloader.js"></script>
+<script>
+  const MGR = (window.LAB && window.LAB.managerUrl) || location.origin;
+  const $ = id => document.getElementById(id);
+  const api = (p, opts) => fetch(MGR + p, opts).then(r => r.json());
+  const fmtBytes = b => { if(!b) return '0'; const u=['B','KB','MB','GB'];let i=0;b=+b;while(b>=1024&&i<u.length-1){b/=1024;i++}return b.toFixed(i?1:0)+u[i]; };
+  const esc = s => String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  let boot = null;
+
+  async function connect(){
+    try{
+      const id = await api('/api/identity');
+      const me = await api('/api/admin/whoami');
+      $('conn').classList.add('ok'); $('conn').querySelector('span').textContent = 'Connected · ' + id.node;
+      $('who').innerHTML = me.recognised ? `<b>${esc(me.name)}</b> · ${esc(me.role)}` : 'Administrator (unverified PC)';
+      await Promise.all([loadAnalytics(true), loadApprovals(), loadAI(), loadFleet()]);
+    }catch(e){
+      $('conn').querySelector('span').textContent = 'Manager unreachable';
+      $('approvals').innerHTML = `<div class="empty">Can't reach the Manager at ${MGR}.<br>Is it on the LAN and running?</div>`;
+    }
+    if(boot){ boot.done(); boot=null; }
+  }
+
+  /* ---------- Overview: tiles + charts ---------- */
+  const AGENT_HUE = {Nova:'#2f5fd0',Sable:'#1f9d55',Echo:'#c0392b',Root:'#c67c1a',Pixel:'#7a4fd0'};
+  const TEL_HUE = {page:'#2f5fd0',activity:'#6f97e8',login:'#1f9d55',sauce:'#7a4fd0',search:'#c67c1a',error:'#c0392b'};
+  let lastTotals = {};
+
+  function countUp(el, to){
+    const from = +(el.dataset.cur||0); if(from===to){el.dataset.cur=to;return;}
+    const t0 = performance.now(), dur=650, isBytes = el.dataset.t==='bytes';
+    function step(t){ const k=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-k,3), v=from+(to-from)*e;
+      el.textContent = isBytes ? fmtBytes(v) : Math.round(v).toLocaleString();
+      if(k<1) requestAnimationFrame(step); else el.dataset.cur=to; }
+    requestAnimationFrame(step);
+  }
+
+  function renderShip(days, animate){
+    const W=560,H=150,base=H-16,top=12,plot=base-top;
+    const max=Math.max(1,...days.map(d=>d.auto+d.approved));
+    const gap=(W-16)/days.length, bw=Math.min(26,gap*0.62);
+    let s='';
+    // baseline
+    s+=`<line x1="8" y1="${base}" x2="${W-8}" y2="${base}" stroke="#d3d8e0" stroke-width="1"/>`;
+    days.forEach((d,i)=>{
+      const x=8+gap*i+(gap-bw)/2;
+      const ah=d.auto/max*plot, ph=d.approved/max*plot;
+      const dl=animate?` style="animation-delay:${(i*0.03).toFixed(2)}s"`:'';
+      const cls=animate?'bar anim':'bar';
+      if(ah>0) s+=`<rect class="${cls}"${dl} x="${x.toFixed(1)}" y="${(base-ah).toFixed(1)}" width="${bw.toFixed(1)}" height="${ah.toFixed(1)}" fill="#2f5fd0"/>`;
+      if(ph>0) s+=`<rect class="${cls}"${dl} x="${x.toFixed(1)}" y="${(base-ah-ph).toFixed(1)}" width="${bw.toFixed(1)}" height="${ph.toFixed(1)}" fill="#1b2330"/>`;
+      if(i%2===0){ const lab=d.day.slice(5); s+=`<text x="${(x+bw/2).toFixed(1)}" y="${H-3}" font-size="8" fill="#8b93a1" text-anchor="middle">${lab}</text>`; }
+    });
+    $('ch-ship').innerHTML=s;
+  }
+
+  function renderSig(hist, animate){
+    const map={}; hist.forEach(h=>map[h.s]=h.c);
+    const max=Math.max(1,...hist.map(h=>h.c));
+    let s='';
+    for(let v=1;v<=10;v++){
+      const c=map[v]||0, w=(c/max*100).toFixed(1), hi=v>=8;
+      const anim=animate?' anim':'';
+      s+=`<div class="hrow"><div class="s">${v}</div><div class="htrack"><div class="hfill${anim}" style="width:${w}%;background:${hi?'var(--bad)':'var(--steel)'}"></div></div><div class="c">${c||''}</div></div>`;
+    }
+    $('ch-sig').innerHTML=s;
+  }
+
+  function renderTelemetry(tel, animate){
+    const total=tel.reduce((a,b)=>a+b.c,0)||1;
+    let s='', lg='';
+    tel.forEach(t=>{
+      const w=(t.c/total*100).toFixed(2), col=TEL_HUE[t.type]||'#8b93a1';
+      s+=`<div class="seg${animate?' anim':''}" style="width:${w}%;background:${col}"></div>`;
+      lg+=`<span><i style="background:${col}"></i>${esc(t.type)} · ${t.c}</span>`;
+    });
+    $('ch-tel').innerHTML = s || '<div class="seg" style="width:100%;background:var(--surface2)"></div>';
+    $('tel-lg').innerHTML = lg || '<span style="color:var(--ink3)">No telemetry yet</span>';
+  }
+
+  function renderUpgrades(ups){
+    $('upgrades').innerHTML = ups.length ? ups.map(u=>{
+      const dec = u.decision, tag = dec==='auto-shipped'||dec==='shipped'?['auto','Shipped']:dec==='approved'?['appr','Approved']:dec==='rejected'?['rej','Rejected']:['pend','Pending'];
+      const hue = AGENT_HUE[u.agent]||'#5b6472';
+      return `<div class="up">
+        <div class="ag" style="color:${hue};border-color:${hue}44">${esc((u.agent||'·')[0])}</div>
+        <div class="body">
+          <div class="t">${esc(u.title)}</div>
+          <div class="p">${esc(u.path||u.service||'—')}</div>
+          <div class="meta"><span class="chip ${tag[0]}">${tag[1]}</span><span class="chip">${esc(u.service||'')}</span>
+            <span class="sg ${u.significance>=8?'hi':''}">SIG ${u.significance}/10</span></div>
+        </div></div>`;
+    }).join('') : '<div class="empty">No upgrades yet — trigger the Dev Team or wait for the next standup.</div>';
+  }
+
+  async function loadAnalytics(animate){
+    const a = await api('/api/analytics');
+    // tiles
+    document.querySelectorAll('.tile .v').forEach(el=>{
+      const k=el.dataset.t; countUp(el, a.totals[k]||0);
+    });
+    const rate = a.totals.total ? Math.round(a.totals.shipped/a.totals.total*100) : 0;
+    $('u-rate').textContent = rate+'% hands-off';
+    renderShip(a.ships, animate);
+    renderSig(a.sig, animate);
+    renderTelemetry(a.telemetry, animate);
+    renderUpgrades(a.upgrades);
+    $('ov-when').textContent = 'live · '+new Date().toLocaleTimeString();
+  }
+
+  /* ---------- Approvals ---------- */
+  async function loadApprovals(){
+    const list = await api('/api/updates/pending');
+    $('approvals').innerHTML = list.length ? list.map(u=>`
+      <div class="apr" data-id="${u.id}">
+        <div class="top">
+          <div><div class="ttl">${esc(u.title)}</div>
+          <div class="meta">${esc(u.service||'—')} · ${esc(u.kind)} · ${fmtBytes(u.size_bytes)} · ${esc(u.agent||'')}</div>
+          ${u.path?`<div class="pth">${esc(u.path)}</div>`:''}</div>
+          <div class="sig ${u.significance>=8?'hi':''}">SIG ${u.significance}/10</div>
+        </div>
+        <div class="sum">${esc(u.summary||'')}</div>
+        <div class="btns"><button class="btn" data-act="approved">Approve</button><button class="btn rej" data-act="rejected">Reject</button></div>
+      </div>`).join('') : '<div class="empty">Nothing awaiting approval. The Dev Team ships low-significance changes automatically.</div>';
+    $('approvals').querySelectorAll('[data-act]').forEach(b=>b.onclick=async()=>{
+      const id=b.closest('[data-id]').dataset.id;
+      await api(`/api/updates/${id}/decision`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({decision:b.dataset.act})});
+      loadApprovals(); loadAnalytics(false);
+    });
+  }
+
+  /* ---------- AI controls ---------- */
+  let aiSaveTimer;
+  async function loadAI(){
+    const ai = await api('/api/settings/ai');
+    $('act').value=ai.activity; $('v-act').textContent=ai.activity;
+    $('agg').value=ai.aggressiveness; $('v-agg').textContent=ai.aggressiveness;
+    $('pause').checked=!!ai.buildingPaused;
+  }
+  function pushAI(){
+    clearTimeout(aiSaveTimer);
+    aiSaveTimer=setTimeout(()=>api('/api/settings/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({activity:+$('act').value,aggressiveness:+$('agg').value,buildingPaused:$('pause').checked})}),250);
+  }
+  $('act').oninput=()=>{$('v-act').textContent=$('act').value;pushAI();};
+  $('agg').oninput=()=>{$('v-agg').textContent=$('agg').value;pushAI();};
+  $('pause').onchange=pushAI;
+
+  /* ---------- Fleet ---------- */
+  async function loadFleet(){
+    const list = await api('/api/fleet');
+    $('fleet').innerHTML = list.length ? list.map(d=>`
+      <div class="dev"><div><b>${esc(d.name)}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(d.kind)} · ${esc(d.os||'—')}</span></div>
+      <span class="st ${d.status}">${esc(d.status)}</span></div>`).join('') : '<div class="empty">No devices enrolled.</div>';
+  }
+
+  function startPortal(){
+    boot = LabLoader.overlay({ label: 'L.A.B Admin' });
+    connect();
+    initNeural();
+    setInterval(()=>{ loadApprovals(); loadFleet(); }, 5000);
+    setInterval(()=>{ loadAnalytics(false); }, 20000);
+  }
+
+  /* ---------- The Ledger Neural Map (3D) ---------- */
+  const HUE={master:'#dfe6f5',team:'#e8b445',client:'#3d9ce0',admin:'#8a5fd0',kiosk:'#3dc98a'};
+  let NN={nodes:[],edges:[],byId:{}},cam={rx:-.35,ry:.6,dist:520},drag=null,expanded=new Set(['lab']),hovered=null;
+  function seedPositions(){
+    // deterministic-ish 3D layout: root center, ledgers on a ring, kinds orbit their ledger, entries orbit kinds
+    const R1=150,R2=95,R3=52;
+    NN.nodes.forEach(n=>{ NN.byId[n.id]=n; n.sx=n.sx??0; });
+    const ledgers=NN.nodes.filter(n=>n.level===1);
+    ledgers.forEach((n,i)=>{ const a=i/ledgers.length*Math.PI*2; n.tx=Math.cos(a)*R1; n.ty=(i%2?-1:1)*26; n.tz=Math.sin(a)*R1; });
+    NN.nodes.filter(n=>n.level===2).forEach(n=>{
+      const parent=NN.byId[(NN.edges.find(e=>e.to===n.id)||{}).from]; if(!parent)return;
+      const sibs=NN.edges.filter(e=>e.from===parent.id).map(e=>e.to);
+      const i=sibs.indexOf(n.id), a=i/Math.max(1,sibs.length)*Math.PI*2+parent.tx*.01;
+      n.tx=parent.tx+Math.cos(a)*R2; n.ty=parent.ty+Math.sin(a*1.7)*34; n.tz=parent.tz+Math.sin(a)*R2;
+    });
+    NN.nodes.filter(n=>n.level===3).forEach(n=>{
+      const parent=NN.byId[(NN.edges.find(e=>e.to===n.id)||{}).from]; if(!parent)return;
+      const sibs=NN.edges.filter(e=>e.from===parent.id).map(e=>e.to);
+      const i=sibs.indexOf(n.id), a=i/Math.max(1,sibs.length)*Math.PI*2+parent.ty*.02;
+      n.tx=parent.tx+Math.cos(a)*R3; n.ty=parent.ty+Math.sin(a*2.3)*22; n.tz=parent.tz+Math.sin(a)*R3;
+    });
+    const root=NN.byId['lab']; if(root){root.tx=0;root.ty=0;root.tz=0;}
+    NN.nodes.forEach(n=>{ n.x=n.x??n.tx*.2; n.y=n.y??n.ty*.2; n.z=n.z??n.tz*.2; });
+  }
+  function visible(n){
+    if(n.level<=1) return true;
+    // a node is visible if its parent chain is expanded
+    let cur=n;
+    while(cur){
+      const pe=NN.edges.find(e=>e.to===cur.id); if(!pe) return true;
+      const parent=NN.byId[pe.from]; if(!parent) return true;
+      if(cur.level-1>=1 && !expanded.has(parent.id)) return false;
+      cur=parent; if(cur.level===0) break;
+    }
+    return true;
+  }
+  function project(n,w,h){
+    const cy=Math.cos(cam.ry),sy=Math.sin(cam.ry),cx=Math.cos(cam.rx),sx=Math.sin(cam.rx);
+    let X=n.x*cy - n.z*sy, Z=n.x*sy + n.z*cy, Y=n.y*cx - Z*sx; Z=n.y*sx + Z*cx;
+    const f=cam.dist/(cam.dist+Z+260);
+    return {x:w/2+X*f, y:h/2+Y*f, s:f, z:Z};
+  }
+  let raf;
+  function drawNeural(){
+    const cv=$('ncanvas'),box=$('neural'); if(!cv||!box)return;
+    const w=box.clientWidth,h=box.clientHeight;
+    if(cv.width!==w*devicePixelRatio){cv.width=w*devicePixelRatio;cv.height=h*devicePixelRatio;}
+    const g=cv.getContext('2d'); g.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    g.clearRect(0,0,w,h);
+    if(!drag) cam.ry+=.0022;
+    // physics: ease toward targets
+    NN.nodes.forEach(n=>{ n.x+=(n.tx-n.x)*.06; n.y+=(n.ty-n.y)*.06; n.z+=(n.tz-n.z)*.06; });
+    const vis=NN.nodes.filter(visible).map(n=>({n,p:project(n,w,h)})).sort((a,b)=>b.p.z-a.p.z);
+    const pos={}; vis.forEach(v=>pos[v.n.id]=v.p);
+    // edges
+    g.lineWidth=1;
+    NN.edges.forEach(e=>{ const a=pos[e.from],b=pos[e.to]; if(!a||!b)return;
+      const led=(NN.byId[e.to]||{}).ledger||'master';
+      g.strokeStyle=(HUE[led]||'#666')+'55'; g.beginPath(); g.moveTo(a.x,a.y); g.lineTo(b.x,b.y); g.stroke(); });
+    // pulses along level-1 edges (the "thinking" effect)
+    const t=Date.now()/1000;
+    NN.edges.filter(e=>e.from==='lab').forEach((e,i)=>{ const a=pos[e.from],b=pos[e.to]; if(!a||!b)return;
+      const k=(t*.5+i*.25)%1, px=a.x+(b.x-a.x)*k, py=a.y+(b.y-a.y)*k;
+      g.fillStyle='#fff'; g.globalAlpha=.7*(1-Math.abs(k-.5)*2)+.1; g.beginPath(); g.arc(px,py,1.8,0,7); g.fill(); g.globalAlpha=1; });
+    // nodes
+    vis.forEach(({n,p})=>{
+      const col=HUE[n.ledger]||'#9aa'; const base=n.level===0?13:n.level===1?9:n.level===2?5.5:3.5;
+      const r=base*p.s*(hovered===n.id?1.5:1);
+      const glow=g.createRadialGradient(p.x,p.y,0,p.x,p.y,r*3.2);
+      glow.addColorStop(0,col+'66'); glow.addColorStop(1,col+'00');
+      g.fillStyle=glow; g.beginPath(); g.arc(p.x,p.y,r*3.2,0,7); g.fill();
+      g.fillStyle=col; g.beginPath(); g.arc(p.x,p.y,r,0,7); g.fill();
+      if(n.level<=1 || hovered===n.id || (n.level===2&&expanded.has(n.id))){
+        g.fillStyle='rgba(230,236,250,'+(n.level<=1?.9:.75)+')';
+        g.font=(n.level===0?'700 12px':'600 10px')+' "Segoe UI"';
+        g.textAlign='center'; g.fillText(n.label.slice(0,30),p.x,p.y-r-6);
+      }
+      n._px=p.x; n._py=p.y; n._pr=Math.max(r,7);
+    });
+    raf=requestAnimationFrame(drawNeural);
+  }
+  async function initNeural(){
+    try{
+      const gr=await api('/api/ledgers/graph');
+      NN={nodes:gr.nodes||[],edges:gr.edges||[],byId:{}};
+      seedPositions();
+      $('ncount').textContent=NN.nodes.length+' nodes · '+NN.edges.length+' links';
+      cancelAnimationFrame(raf); drawNeural();
+    }catch(e){ $('ncount').textContent='ledger graph unavailable'; }
+    // refresh the graph periodically — it grows as the AI learns
+    setTimeout(initNeural, 60000);
+  }
+  (function neuralInput(){
+    const box=$('neural'); if(!box)return;
+    box.addEventListener('mousedown',e=>{drag={x:e.clientX,y:e.clientY};});
+    addEventListener('mouseup',()=>drag=null);
+    addEventListener('mousemove',e=>{
+      if(drag){ cam.ry+=(e.clientX-drag.x)*.005; cam.rx+=(e.clientY-drag.y)*.005; cam.rx=Math.max(-1.4,Math.min(1.4,cam.rx)); drag={x:e.clientX,y:e.clientY}; return; }
+      const r=box.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+      hovered=null;
+      for(const n of NN.nodes){ if(n._px!=null && Math.hypot(n._px-mx,n._py-my)<n._pr+4){ hovered=n.id; break; } }
+      box.style.cursor=hovered?'pointer':(drag?'grabbing':'grab');
+    });
+    box.addEventListener('click',e=>{
+      if(!hovered)return;
+      const n=NN.byId[hovered]; if(!n)return;
+      if(expanded.has(n.id)) expanded.delete(n.id); else expanded.add(n.id);   // click = expand downwards
+      const info=$('ninfo');
+      info.classList.add('on');
+      info.innerHTML=`<div class="k">${esc(n.ledger)} · level ${n.level}${n.weight?' · w='+(+n.weight).toFixed(1):''}${n.count?' · '+n.count+' entries':''}</div><div class="t">${esc(n.label)}</div><div style="font-size:11px;color:#8b96b3">${expanded.has(n.id)?'expanded — click again to collapse':'collapsed'}</div>`;
+      clearTimeout(info._t); info._t=setTimeout(()=>info.classList.remove('on'),5000);
+    });
+    box.addEventListener('wheel',e=>{e.preventDefault(); cam.dist=Math.max(220,Math.min(900,cam.dist+e.deltaY*.6));},{passive:false});
+  })();
+
+  /* ---------- USB-key gate ---------- */
+  const SESS={get:()=>{try{return JSON.parse(localStorage.getItem('lab_admin_session'))}catch{return null}},set:v=>localStorage.setItem('lab_admin_session',JSON.stringify(v)),clear:()=>localStorage.removeItem('lab_admin_session')};
+  const showGate=()=>$('keygate').classList.add('on');
+  const hideGate=()=>$('keygate').classList.remove('on');
+  async function tryUnlock(text){
+    $('kg-err').textContent='';
+    let kf; try{ kf=JSON.parse(text); }catch{ $('kg-err').textContent='That does not look like a L.A.B key file.'; return; }
+    if(kf.lab!=='admin-key'||!kf.token||!kf.key){ $('kg-err').textContent='This file is not a valid admin key.'; return; }
+    try{
+      const r=await api('/api/admin/verify-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:kf.token,key:kf.key})});
+      SESS.set({name:r.admin.name,role:r.admin.role,at:Date.now()});
+      hideGate(); startPortal();
+    }catch(e){ $('kg-err').textContent=(e&&e.message)||'This key was rejected.'; }
+  }
+  const readFile=f=>{ if(!f)return; const rd=new FileReader(); rd.onload=()=>tryUnlock(rd.result); rd.readAsText(f); };
+  $('kg-file').onchange=e=>readFile(e.target.files[0]);
+  const dz=$('kg-drop');
+  ['dragover','dragenter'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('hot');}));
+  ['dragleave'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('hot');}));
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('hot');readFile(e.dataTransfer.files[0]);});
+  $('kg-lock').onclick=()=>{ SESS.clear(); location.reload(); };
+
+  // boot: an unlocked session persists for this browser; otherwise the key is required
+  if(SESS.get()) startPortal(); else showGate();
+</script>
+</body>
+</html>

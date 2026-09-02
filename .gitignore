@@ -1,0 +1,49 @@
+# ---- dependencies / build output ----
+**/node_modules/
+**/target/
+**/dist/
+lab-hub-app/src-tauri/gen/
+app-builds/
+*.log
+build*.log
+
+# ---- compiled installers / binaries (CI produces these) ----
+*.exe
+*.msi
+*.dmg
+*.app
+*.AppImage
+*.deb
+*.zip
+
+# ---- secrets / local env (NEVER commit) ----
+.env
+.env.*
+*.key
+*.pem
+id_ed25519*
+id_rsa*
+*_token*
+.pgpass
+
+# ---- os / editor cruft ----
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# ---- scratch ----
+_preview_*.html
+LAB-Pitch-Images/
+
+# ---- excluded from the platform repo ----
+# pre-pivot app (has its own git history) + local Claude config/state
+home-lab-hub/
+.claude/
+
+# ---- install-media blobs (not platform code) ----
+*.img
+*.img.xz
+*.iso
+**/ventoy/

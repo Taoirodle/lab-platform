@@ -1,0 +1,11 @@
+{
+  "name": "lab-admin-portal",
+  "version": "0.0.1",
+  "private": true,
+  "description": "L.A.B Admin Portal — the onsite administrator's console. Connects to the L.A.B Hub Manager over the LAN.",
+  "main": "main.js",
+  "scripts": { "start": "electron ." },
+  "author": "Tao Volkwyn + The Sauce",
+  "license": "UNLICENSED",
+  "devDependencies": { "electron": "^43.4.0" }
+}

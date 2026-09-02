@@ -1,0 +1,17 @@
+{
+  "name": "lab-hub-manager",
+  "version": "0.0.1",
+  "private": true,
+  "description": "L.A.B Hub Manager — the Main Server's brain and face. First build.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "author": "Tao Volkwyn + The Sauce",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "systeminformation": "^5.23.8",
+    "ws": "^8.18.0"
+  }
+}

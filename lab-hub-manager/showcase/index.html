@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L.A.B ONE</title>
+<style>
+  :root{--bg:#05060b;--txt:#f4f6ff;--a1:#b79bff;--a2:#6fb4ff;--warm:#ffcf6f;--red:#ff5a52;--ok:#5fe08a}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-user-select:none;user-select:none}
+  html,body{height:100%;overflow:hidden;cursor:none}
+  body{background:var(--bg);color:var(--txt);font-family:"Segoe UI",Inter,system-ui,sans-serif}
+  #cube{position:fixed;inset:0;z-index:0}
+  .stage{position:fixed;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:6vw;opacity:0;transform:scale(1.04);transition:opacity .9s ease,transform .9s cubic-bezier(.2,.7,.2,1);pointer-events:none}
+  .stage.on{opacity:1;transform:scale(1)}
+  .eyebrow{font-family:"Cascadia Code",Consolas,monospace;font-size:clamp(12px,1.4vw,17px);letter-spacing:6px;text-transform:uppercase;color:var(--a1);margin-bottom:2.5vh}
+  .huge{font-size:clamp(52px,13vw,190px);font-weight:900;letter-spacing:-.03em;line-height:.92;text-wrap:balance}
+  .huge .dot{color:var(--warm)}
+  .sub{font-size:clamp(16px,2.2vw,30px);color:#aeb8d6;margin-top:3vh;font-weight:500}
+  .glow1{color:var(--a1)}.glow2{color:var(--a2)}.warm{color:var(--warm)}
+  /* flash overlays */
+  #flash{position:fixed;inset:0;z-index:3;background:var(--red);opacity:0;pointer-events:none;transition:opacity .12s}
+  #flash.hit{opacity:.85;transition:opacity .5s}
+  /* money list */
+  .money{display:flex;flex-direction:column;gap:1.6vh;font-size:clamp(18px,2.6vw,34px);font-weight:700}
+  .money .l{display:flex;gap:20px;align-items:center;justify-content:center}
+  .money .l .was{color:#7c86a6;text-decoration:line-through;text-decoration-thickness:2px}
+  .money .l .arr{color:var(--a1)}
+  .total{font-family:"Cascadia Code",monospace;font-size:clamp(30px,6vw,86px);font-weight:800;color:var(--ok);margin-top:3vh;font-variant-numeric:tabular-nums}
+  /* guardian */
+  .silh{display:flex;gap:2vw;margin-top:3vh}
+  .silh i{width:9vw;height:20vh;border-radius:40% 40% 20% 20%;background:linear-gradient(var(--ok),transparent);opacity:.5;animation:sway 2.6s ease-in-out infinite}
+  .silh i:nth-child(2){animation-delay:.4s;height:24vh}.silh i:nth-child(3){animation-delay:.8s;height:18vh}
+  @keyframes sway{0%,100%{transform:translateY(0) scaleX(1)}50%{transform:translateY(-1vh) scaleX(1.06)}}
+  .badge{display:inline-flex;align-items:center;gap:12px;font-family:monospace;font-size:clamp(13px,1.5vw,19px);letter-spacing:3px;border:1px solid currentColor;padding:8px 18px;margin-top:3vh}
+  .badge.red{color:var(--red)}.badge.ok{color:var(--ok)}
+  .badge i{width:10px;height:10px;border-radius:50%;background:currentColor;animation:bp 1.4s infinite}
+  @keyframes bp{50%{opacity:.3}}
+  #hint{position:fixed;bottom:14px;right:16px;z-index:5;font-family:monospace;font-size:11px;color:rgba(255,255,255,.22);letter-spacing:1px}
+</style>
+</head>
+<body>
+<canvas id="cube"></canvas>
+<div id="flash"></div>
+
+<div class="stage" id="s-idle"><div class="huge">L<span class="dot">.</span>A<span class="dot">.</span>B</div></div>
+<div class="stage" id="s-intro"><div class="eyebrow">welcome home</div><div class="huge">L<span class="dot">.</span>A<span class="dot">.</span>B</div><div class="sub">The home, handled.</div></div>
+<div class="stage" id="s-greet"><div class="eyebrow">good evening</div><div class="huge" id="greet-name">—</div></div>
+<div class="stage" id="s-motion"><div class="badge red"><i></i>MOTION DETECTED</div><div class="huge" id="motion-room" style="margin-top:3vh">HALLWAY</div><div class="sub">The house noticed.</div></div>
+<div class="stage" id="s-guardian"><div class="eyebrow">guardian</div><div class="huge" style="font-size:clamp(40px,8vw,110px)">PERIMETER SECURE</div><div class="silh"><i></i><i></i><i></i></div><div class="badge ok"><i></i>SECURITY ONLINE</div></div>
+<div class="stage" id="s-sauce"><div class="eyebrow">the sauce</div><div class="sub" id="sauce-text" style="font-size:clamp(22px,3.4vw,46px);color:var(--txt);font-weight:700;max-width:22ch;line-height:1.25"></div></div>
+<div class="stage" id="s-money"><div class="eyebrow">what we replace</div><div class="money" id="money-list"></div><div class="total" id="money-total"></div></div>
+<div class="stage" id="s-join"><div class="eyebrow">now onboarding</div><div class="huge" id="join-name">—</div><div class="sub">has joined the L.A.B</div></div>
+<div class="stage" id="s-curtain"><div class="huge">Welcome<br>to the L<span class="dot">.</span>A<span class="dot">.</span>B</div><div class="sub" id="curtain-names"></div></div>
+
+<div id="hint">L.A.B ONE · /showcase/control.html</div>
+
+<script>
+  // ---- rotating cube-in-cube (the brand mark, ambient) ----
+  const cv=document.getElementById('cube'),g=cv.getContext('2d');
+  let W,H; function size(){W=cv.width=innerWidth*devicePixelRatio;H=cv.height=innerHeight*devicePixelRatio;g.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);} addEventListener('resize',size); size();
+  let ry=0,intensity=.5,hue=[183,155,255];
+  function cubePts(s){const p=[];for(const x of[-1,1])for(const y of[-1,1])for(const z of[-1,1])p.push([x*s,y*s,z*s]);return p;}
+  const E=[[0,1],[1,3],[3,2],[2,0],[4,5],[5,7],[7,6],[6,4],[0,4],[1,5],[2,6],[3,7]];
+  function draw(){
+    g.clearRect(0,0,innerWidth,innerHeight); ry+=.006;
+    const cx=innerWidth/2,cy=innerHeight/2, base=Math.min(innerWidth,innerHeight);
+    [ .34, .19 ].forEach((sc,li)=>{
+      const pts=cubePts(base*sc).map(([x,y,z])=>{const X=x*Math.cos(ry)-z*Math.sin(ry),Z=x*Math.sin(ry)+z*Math.cos(ry);const rx=.5;const Y=y*Math.cos(rx)-Z*Math.sin(rx),Z2=y*Math.sin(rx)+Z*Math.cos(rx);const f=560/(560+Z2);return[cx+X*f,cy+Y*f];});
+      g.strokeStyle=`rgba(${hue[0]},${hue[1]},${hue[2]},${(li?.22:.4)*intensity+.06})`; g.lineWidth=li?1:1.6;
+      g.beginPath(); for(const[a,b]of E){g.moveTo(pts[a][0],pts[a][1]);g.lineTo(pts[b][0],pts[b][1]);} g.stroke();
+    });
+    requestAnimationFrame(draw);
+  }
+  draw();
+
+  // ---- scenes ----
+  let cur='idle';
+  function show(id){ document.querySelectorAll('.stage').forEach(s=>s.classList.toggle('on',s.id==='s-'+id)); cur=id; }
+  function flash(){ const f=document.getElementById('flash'); f.classList.remove('hit'); void f.offsetWidth; f.classList.add('hit'); setTimeout(()=>f.classList.remove('hit'),650); }
+  function typeInto(el,text){ el.textContent=''; let i=0; (function t(){ if(i<=text.length){el.textContent=text.slice(0,i++);setTimeout(t,26);} })(); }
+
+  const DEF_MONEY=[['Cloud photo storage','Vault'],['File backup','Vault'],['Chore / list apps','Family Board'],['Ad-blocking','Guardian'],['Home-cam subscription','Kinect + Guardian']];
+  function play(cue,data){
+    data=data||{};
+    if(cue==='blackout'){ show('none'); intensity=.05; return; }
+    if(cue==='idle'){ show('idle'); intensity=.5; hue=[183,155,255]; return; }
+    if(cue==='intro'){ show('intro'); intensity=1; hue=[183,155,255]; return; }
+    if(cue==='greet'){ const names=data.names||(data.name?[data.name]:['Volkwyns']); let i=0; show('greet'); intensity=.9;
+      const el=document.getElementById('greet-name'); const cyc=()=>{ el.textContent=names[i%names.length]; el.style.animation='none'; void el.offsetWidth; el.style.animation=''; i++; if(i<names.length)setTimeout(cyc,1400); }; cyc(); return; }
+    if(cue==='motion'){ hue=[255,90,82]; intensity=1; flash(); document.getElementById('motion-room').textContent=(data.room||'HALLWAY').toUpperCase(); show('motion'); return; }
+    if(cue==='guardian'){ hue=[95,224,138]; intensity=.9; show('guardian'); return; }
+    if(cue==='sauce'){ hue=[255,207,111]; intensity=.9; show('sauce'); typeInto(document.getElementById('sauce-text'), data.text||'Movie night. Lights down, week planned, house quiet.'); return; }
+    if(cue==='money'){ hue=[95,224,138]; intensity=.8; const rows=data.rows||DEF_MONEY;
+      document.getElementById('money-list').innerHTML=rows.map(r=>`<div class="l"><span class="was">${r[0]}</span><span class="arr">→</span><span>${r[1]}</span></div>`).join('');
+      show('money'); const target=data.total||420; const t=document.getElementById('money-total'); let v=0; const step=()=>{v+=target/40;if(v>=target){t.textContent='R'+target+' /mo back';return;}t.textContent='R'+Math.round(v);requestAnimationFrame(step);}; step(); return; }
+    if(cue==='join'){ hue=[183,155,255]; intensity=1; document.getElementById('join-name').textContent=data.name||'Someone'; show('join'); flash(); document.getElementById('flash').style.background='var(--a1)'; setTimeout(()=>document.getElementById('flash').style.background='var(--red)',700); return; }
+    if(cue==='curtain'){ hue=[255,207,111]; intensity=1; if(data.names)document.getElementById('curtain-names').textContent=data.names.join('  ·  '); show('curtain'); return; }
+    show('idle');
+  }
+
+  // ---- live cue channel ----
+  function connect(){
+    const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+    ws.onmessage=e=>{ try{const m=JSON.parse(e.data); if(m.type==='showcase') play(m.cue,m.data);}catch{} };
+    ws.onclose=()=>setTimeout(connect,1500);
+  }
+  connect();
+  // keyboard fallback for a dry run without the remote: 0-9
+  const KEYS=['idle','intro','greet','motion','guardian','sauce','money','join','curtain','blackout'];
+  addEventListener('keydown',e=>{ const n=+e.key; if(!isNaN(n)&&KEYS[n]) play(KEYS[n],{}); });
+  play('idle',{});
+</script>
+</body>
+</html>

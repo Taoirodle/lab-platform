@@ -1,0 +1,15 @@
+{
+  "name": "lab-hub-app",
+  "version": "0.1.0",
+  "description": "L.A.B Hub — the personal, modular home-platform desktop app (Tauri, native).",
+  "license": "GPL-3.0-or-later",
+  "private": true,
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "preview:web": "npx --yes serve src"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

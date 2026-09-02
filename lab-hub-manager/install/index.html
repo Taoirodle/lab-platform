@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L.A.B Admin — Installer</title>
+<style>
+  :root{--bg:#e8eaee;--surface:#fff;--surface2:#f3f5f8;--line:#d3d8e0;--line2:#bcc3cf;--ink:#12151b;--ink2:#5b6472;--ink3:#8b93a1;--accent:#1b2330;--steel:#2f5fd0;--ok:#1f9d55;--bad:#c0392b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:"Segoe UI",Inter,system-ui,sans-serif;font-size:14px;min-height:100vh}
+  .mono{font-variant-numeric:tabular-nums;font-family:"Cascadia Code","SF Mono",Consolas,monospace}
+  header{background:var(--surface);border-bottom:1px solid var(--line2);height:62px;display:flex;align-items:center;padding:0 26px;gap:12px}
+  .mark{width:28px;height:28px;color:var(--ink)}
+  .wm{font-weight:700;letter-spacing:2px;font-size:13px}
+  .wm span{color:var(--ink3);font-weight:600}
+  main{max-width:680px;margin:0 auto;padding:34px 26px 60px}
+  /* stepper */
+  .steps{display:flex;gap:0;margin-bottom:26px}
+  .step{flex:1;display:flex;flex-direction:column;gap:8px;position:relative}
+  .step .dot{width:26px;height:26px;border:1px solid var(--line2);background:var(--surface);display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--ink3);z-index:1}
+  .step.done .dot{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .step.active .dot{border-color:var(--accent);color:var(--accent)}
+  .step .cap{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink3);font-weight:600}
+  .step.active .cap,.step.done .cap{color:var(--ink)}
+  .step .line{position:absolute;top:13px;left:26px;right:0;height:1px;background:var(--line2)}
+  .step:last-child .line{display:none}
+  .step.done .line{background:var(--accent)}
+  .card{background:var(--surface);border:1px solid var(--line2)}
+  .pad{padding:28px 30px}
+  h1{font-size:20px;font-weight:700;letter-spacing:.2px}
+  .lead{color:var(--ink2);margin:8px 0 22px;line-height:1.55}
+  label{display:block;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--ink3);font-weight:600;margin-bottom:8px}
+  input[type=text]{width:100%;padding:12px 14px;border:1px solid var(--line2);background:var(--surface2);font:inherit;font-size:15px;color:var(--ink)}
+  input[type=text]:focus{outline:none;border-color:var(--accent)}
+  .btn{appearance:none;border:1px solid var(--accent);background:var(--accent);color:#fff;font:600 12px "Segoe UI";letter-spacing:1.2px;text-transform:uppercase;padding:12px 20px;cursor:pointer}
+  .btn:hover{background:#000}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:var(--surface);color:var(--accent)}
+  .btn.ghost:hover{background:var(--surface2)}
+  .row{display:flex;gap:10px;align-items:center;margin-top:24px}
+  .spacer{flex:1}
+  .note{background:var(--surface2);border:1px solid var(--line);padding:14px 16px;font-size:13px;color:var(--ink2);line-height:1.55;margin:16px 0}
+  .note b{color:var(--ink)}
+  .recog{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);margin-bottom:18px}
+  .recog i{width:8px;height:8px;background:var(--ink3)}
+  .recog.ok i{background:var(--ok)}
+  .keycard{display:flex;gap:16px;align-items:center;border:1px dashed var(--line2);background:var(--surface2);padding:18px 20px;margin:18px 0}
+  .keycard svg{width:40px;height:40px;color:var(--accent);flex:none}
+  .keycard .t{font-weight:700}.keycard .s{font-size:12px;color:var(--ink3);margin-top:2px}
+  .check{display:flex;gap:10px;align-items:flex-start;margin-top:18px;font-size:13px;color:var(--ink2);cursor:pointer}
+  .check input{margin-top:2px;width:16px;height:16px;accent-color:var(--accent)}
+  .opt{border:1px solid var(--line2);padding:18px 20px;margin-bottom:14px}
+  .opt h3{font-size:15px;font-weight:700;display:flex;align-items:center;gap:10px}
+  .opt p{font-size:13px;color:var(--ink2);margin:6px 0 14px;line-height:1.5}
+  .tag{font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border:1px solid var(--steel);color:var(--steel)}
+  .tag.soon{border-color:var(--ink3);color:var(--ink3)}
+  .cmd{background:#12151b;color:#e6ebf2;padding:12px 14px;font-size:12px;overflow:auto;white-space:pre;border:1px solid var(--line2)}
+  .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:8px}
+  .big-ok{width:56px;height:56px;border:2px solid var(--ok);color:var(--ok);border-radius:50%;display:grid;place-items:center;margin-bottom:18px}
+  .big-ok svg{width:28px;height:28px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<header>
+  <svg class="mark" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="26" height="26"/><rect x="10" y="10" width="12" height="12"/><line x1="3" y1="3" x2="10" y2="10"/><line x1="29" y1="3" x2="22" y2="10"/><line x1="3" y1="29" x2="10" y2="22"/><line x1="29" y1="29" x2="22" y2="22"/></svg>
+  <div class="wm">L.A.B ADMIN <span>· LOCAL INSTALLER</span></div>
+</header>
+<main>
+  <div class="steps" id="steps">
+    <div class="step" data-s="1"><div class="dot">1</div><div class="line"></div><div class="cap">Identify</div></div>
+    <div class="step" data-s="2"><div class="dot">2</div><div class="line"></div><div class="cap">Security key</div></div>
+    <div class="step" data-s="3"><div class="dot">3</div><div class="line"></div><div class="cap">Install</div></div>
+    <div class="step" data-s="4"><div class="dot">4</div><div class="line"></div><div class="cap">Done</div></div>
+  </div>
+
+  <!-- STEP 1 -->
+  <div class="card" id="p1">
+    <div class="pad">
+      <div class="recog" id="recog"><i></i><span>Checking this station…</span></div>
+      <h1>Install the Admin Portal on this PC</h1>
+      <p class="lead">The Admin Portal is the control surface for your L.A.B — approvals, AI controls, and fleet. This installer claims this computer as an administrator station and provisions its physical security key.</p>
+      <label for="name">Administrator name</label>
+      <input type="text" id="name" placeholder="e.g. Tao Volkwyn" autocomplete="off">
+      <div class="err" id="e1"></div>
+      <div class="row"><div class="spacer"></div><button class="btn" id="go1">Claim this station</button></div>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="card hidden" id="p2">
+    <div class="pad">
+      <h1>Provision your security key</h1>
+      <p class="lead">Your Portal is protected by a physical key, not just a password. Download your key file below and save it onto a USB stick or fob — this becomes the key that unlocks the Portal. Keep it somewhere only you control.</p>
+      <div class="keycard">
+        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="16" r="6"/><path d="M17 16h11M24 16v5M28 16v4"/><circle cx="11" cy="16" r="2"/></svg>
+        <div><div class="t" id="keyname">lab-admin.key</div><div class="s">Bound to this server · unique to you · unlocks the Admin Portal</div></div>
+        <div class="spacer"></div>
+        <button class="btn" id="dl">Download key file</button>
+      </div>
+      <div class="note"><b>Important.</b> Anyone with this file and network access to your L.A.B can open the Admin Portal. Store it on removable media and remove it when you're done. It is never kept on this PC.</div>
+      <label class="check"><input type="checkbox" id="saved"><span>I've saved my key file to a USB key / fob and put it somewhere safe.</span></label>
+      <div class="row"><button class="btn ghost" id="back2">Back</button><div class="spacer"></div><button class="btn" id="go2" disabled>Continue</button></div>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="card hidden" id="p3">
+    <div class="pad">
+      <h1>Install the Portal</h1>
+      <p class="lead">Choose how to run the Admin Portal on this station. Both connect to your L.A.B over the local network and unlock with the key you just provisioned.</p>
+      <div class="opt">
+        <h3>Open as an app <span class="tag">Recommended</span></h3>
+        <p>Runs the Portal in your browser and pins it to your desktop like a native app — cross-platform, always up to date. After it opens, use your browser's <b>Install</b> / <b>Add to desktop</b> option.</p>
+        <button class="btn" id="openweb">Open the Admin Portal</button>
+      </div>
+      <div class="opt">
+        <h3>Desktop build (Windows) <span class="tag soon">Optional</span></h3>
+        <p>Run the packaged Electron Portal from a station that has the L.A.B app files. Paste this in PowerShell from the project folder:</p>
+        <div class="cmd" id="deskcmd">./lab-admin-portal/launch.ps1</div>
+      </div>
+      <div class="row"><button class="btn ghost" id="back3">Back</button><div class="spacer"></div><button class="btn" id="go3">Finish</button></div>
+    </div>
+  </div>
+
+  <!-- STEP 4 -->
+  <div class="card hidden" id="p4">
+    <div class="pad" style="text-align:center">
+      <div class="big-ok" style="margin:0 auto 18px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5 11-11"/></svg></div>
+      <h1>Admin Portal installed</h1>
+      <p class="lead" style="max-width:440px;margin:8px auto 22px">This station is now an administrator for <b id="srvname">your L.A.B</b>. Open the Portal and unlock it with your USB key whenever you need to run things.</p>
+      <button class="btn" id="openweb2">Open the Admin Portal</button>
+    </div>
+  </div>
+</main>
+
+<script src="/labloader.js"></script>
+<script>
+  const $=id=>document.getElementById(id);
+  const api=(p,opts)=>fetch(p,opts).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'error');return j;});
+  const S={get:()=>{try{return JSON.parse(localStorage.getItem('lab_install'))||{}}catch{return {}}},set:v=>localStorage.setItem('lab_install',JSON.stringify(v))};
+  let boot=LabLoader?LabLoader.overlay({label:'L.A.B Installer'}):{done(){}};
+  let state=S.get();
+
+  function paint(step){
+    [1,2,3,4].forEach(n=>$('p'+n).classList.toggle('hidden',n!==step));
+    document.querySelectorAll('.step').forEach(el=>{const s=+el.dataset.s;el.classList.toggle('done',s<step);el.classList.toggle('active',s===step);});
+    window.scrollTo(0,0);
+  }
+
+  async function init(){
+    try{
+      const [id,me]=await Promise.all([api('/api/identity'),api('/api/admin/whoami')]);
+      $('srvname').textContent=id.node;
+      $('deskcmd').textContent = `# from the L.A.B project folder\n$env:LAB_MANAGER_URL="http://${location.host}"; ./lab-admin-portal/launch.ps1`;
+      if(me.recognised){ $('recog').classList.add('ok'); $('recog').querySelector('span').textContent='This station is recognised as '+me.name; $('name').value=me.name; }
+      else { $('recog').querySelector('span').textContent='New station · '+(me.ip||'this PC'); }
+    }catch(e){ $('recog').querySelector('span').textContent='Could not reach the Manager'; }
+    if(boot){boot.done();boot=null;}
+    // resume where they left off if a token already exists
+    paint(state.token?3:1);
+    if(state.name) $('name').value=state.name;
+  }
+
+  // Step 1 — claim station
+  $('go1').onclick=async()=>{
+    const name=$('name').value.trim(); $('e1').textContent='';
+    if(name.length<2){ $('e1').textContent='Enter the administrator name.'; return; }
+    try{
+      const a=await api('/api/admin/onboard',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+      await api('/api/admin/pair/'+a.token,{method:'POST'}).catch(()=>{});   // pair this PC by IP
+      state={token:a.token,name:a.name,id:a.id}; S.set(state);
+      $('keyname').textContent='lab-admin-'+name.replace(/\W+/g,'-').toLowerCase()+'.key';
+      paint(2);
+    }catch(e){ $('e1').textContent=e.message; }
+  };
+
+  // Step 2 — provision key
+  $('dl').onclick=()=>{
+    if(!state.token) return;
+    const a=document.createElement('a'); a.href='/api/admin/keyfile/'+state.token; a.download=''; document.body.appendChild(a); a.click(); a.remove();
+    $('saved').disabled=false;
+  };
+  $('saved').onchange=()=>{ $('go2').disabled=!$('saved').checked; };
+  $('back2').onclick=()=>paint(1);
+  $('go2').onclick=()=>paint(3);
+
+  // Step 3 — install
+  $('back3').onclick=()=>paint(2);
+  $('openweb').onclick=()=>window.open('/admin/','_blank');
+  $('go3').onclick=()=>paint(4);
+  $('openweb2').onclick=()=>window.open('/admin/','_blank');
+
+  init();
+</script>
+</body>
+</html>

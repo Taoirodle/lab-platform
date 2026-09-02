@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "L.A.B Hub",
+  "version": "0.1.0",
+  "identifier": "lab.volkwyn.hub",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "L.A.B Hub",
+        "width": 1180,
+        "height": 780,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "backgroundColor": "#0a0c14"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Utility",
+    "shortDescription": "Your home, handled.",
+    "longDescription": "The personal, modular L.A.B Hub — Dashboard, The Sauce, App Store and more, distributed from your own home server."
+  },
+  "plugins": {}
+}

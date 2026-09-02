@@ -1,0 +1,17 @@
+{
+  "name": "L.A.B Hub",
+  "short_name": "L.A.B",
+  "description": "Your home, handled. The Volkwyn family platform — served from your own server.",
+  "id": "/hub/",
+  "start_url": "/hub/",
+  "scope": "/hub/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0c14",
+  "theme_color": "#0a0c14",
+  "icons": [
+    { "src": "/hub/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/hub/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/hub/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
