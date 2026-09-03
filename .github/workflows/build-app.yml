@@ -24,7 +24,9 @@ jobs:
             target: aarch64-apple-darwin
           - os: macos-latest
             target: x86_64-apple-darwin
-          - os: ubuntu-latest
+          # Pinned to 22.04 on purpose: libappindicator3-dev vanished in 24.04, and an
+          # AppImage linked against the older glibc runs on every newer distro.
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     defaults:
@@ -34,10 +36,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Linux system deps (webkit2gtk)
-        if: matrix.os == 'ubuntu-latest'
+        if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev build-essential file
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -60,6 +62,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lab-hub-${{ matrix.target }}
+          if-no-files-found: error
           path: |
             lab-hub-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
             lab-hub-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
@@ -67,3 +70,4 @@ jobs:
             lab-hub-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.app
             lab-hub-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
             lab-hub-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
+            lab-hub-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.rpm
