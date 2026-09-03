@@ -38,6 +38,20 @@ const LAB = (window.LAB = {
   // --- skins (shared with the web hub) ---
   applySkin(vars) { const r = document.documentElement.style, keys = ['--bg', '--panel', '--panel2', '--stroke', '--txt', '--txt2', '--a1', '--a2']; if (!vars) { keys.forEach(k => r.removeProperty(k)); return; } Object.entries(vars).forEach(([k, v]) => { if (keys.includes(k)) r.setProperty(k, v); }); },
 
+  // --- looks: layout overhauls + effects (installed from the App Store, saved per install) ---
+  look: {
+    get() { return LAB.store.get('look') || { layout: 'default', effects: [] }; },
+    save(l) { LAB.store.set('look', l); this.apply(); },
+    apply() {
+      const l = this.get(), c = document.documentElement.classList;
+      [...c].filter(x => x.startsWith('layout-') || x.startsWith('fx-')).forEach(x => c.remove(x));
+      c.add('layout-' + (l.layout || 'default')); (l.effects || []).forEach(e => c.add('fx-' + e));
+    },
+    setLayout(id) { const l = this.get(); l.layout = id; this.save(l); },
+    toggleEffect(id) { const l = this.get(), s = new Set(l.effects || []); if (s.has(id)) s.delete(id); else s.add(id); l.effects = [...s]; this.save(l); },
+    hasEffect(id) { return (this.get().effects || []).includes(id); }
+  },
+
   // --- routing / shell ---
   active: null,
   go(id) {
@@ -69,11 +83,21 @@ const LAB = (window.LAB = {
     this.ctx.server = (await this.invoke('server_url')) || window.LAB_CONFIG.SERVER;
     // native device probe (real, only in the compiled app)
     this.ctx.device = await this.invoke('device_info');
-    // personalization profile from the install wizard (if any)
-    const pid = this.store.get('profileId');
+    // personalization profile from the install wizard (if any). The wizard also
+    // leaves a note on disk (profile id + who signed in) that the native app reads
+    // on first launch — so it's personalised and signed in before you touch it.
+    let pid = this.store.get('profileId');
+    if (!pid || !this.ctx.me) {
+      const hint = await this.invoke('profile_hint');
+      if (hint && hint.found) {
+        if (!pid && hint.id) { pid = String(hint.id); this.store.set('profileId', pid); }
+        if (!this.ctx.me && hint.account_id && hint.account_name) { this.ctx.me = { id: String(hint.account_id), name: String(hint.account_name), role: 'member' }; this.store.set('account', this.ctx.me); }
+      }
+    }
     if (pid) this.ctx.profile = await this.api('/api/wizard/profile/' + pid).catch(() => null);
-    // apply saved skin
+    // apply saved skin + look
     try { const sv = this.store.get('skinvars'); if (sv) this.applySkin(sv); } catch {}
+    try { this.look.apply(); } catch {}
     // footer
     document.getElementById('side-foot').textContent = (this.ctx.device ? 'native · ' : 'web · ') + 'v' + window.LAB_CONFIG.APP_VERSION;
     this.renderNav();

@@ -14,7 +14,7 @@ printf "  Your name: "; read NAME
 printf "  PIN (4-8 digits): "; read PIN
 PATH_EP="/api/accounts"; [ "$MODE" = "y" ] && PATH_EP="/api/accounts/login"
 ACCT=$(curl -s -X POST "$SERVER$PATH_EP" -H 'Content-Type: application/json' -d "{\"name\":\"$NAME\",\"pin\":\"$PIN\"}")
-AID=$(printf '%s' "$ACCT" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+AID=$(printf '%s' "$ACCT" | sed -n 's/.*"id":"\{0,1\}\([0-9]*\)"\{0,1\}.*/\1/p')
 [ -z "$AID" ] && { echo "  ✗ sign-in failed: $ACCT"; exit 1; }
 echo "  ✓ Signed in (account $AID)"
 
@@ -32,6 +32,9 @@ RES=$(curl -s -X POST "$SERVER/api/wizard/profile" -H 'Content-Type: application
 echo "  ── YOUR PERSONALIZED L.A.B ──"
 printf '%s\n' "$RES" | sed -n 's/.*"archetype":"\([^"]*\)".*/  Archetype : \1/p'
 printf '%s\n' "$RES" | sed -n 's/.*"report":"\([^"]*\)".*/\n  \1\n/p'
+# leave a note for the app: read on first launch → personalised + signed in immediately
+PID=$(printf '%s' "$RES" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'); SAFE=$(printf '%s' "$NAME" | sed 's/"/\\"/g')
+mkdir -p "$HOME/.config/lab" && printf '{"id":"%s","account_id":%s,"account_name":"%s","server":"%s"}\n' "$PID" "$AID" "$SAFE" "$SERVER" > "$HOME/.config/lab/profile.json"
 
 echo "  Checking for your app build..."
 if curl -fsSL "$SERVER/app/download/linux" -o "$HOME/Downloads/L.A.B-Hub.AppImage" 2>/dev/null; then

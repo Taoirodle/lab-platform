@@ -178,6 +178,46 @@ canvas.chart{width:100%;display:block}
 .sw{width:28px;height:28px;border-radius:50%;border:0;cursor:pointer}
 .sw.on{outline:2px solid var(--txt);outline-offset:2px}
 .savebar{border-color:var(--a1)}
+/* looks: layout overhauls */
+html.layout-compact #sidebar{width:68px;padding:16px 8px}
+html.layout-compact .bname,html.layout-compact .navitem span:not(.ic),html.layout-compact .side-foot{display:none}
+html.layout-compact .navitem{justify-content:center;padding:12px 0}
+html.layout-compact .brand{justify-content:center;padding:8px 0 18px}
+html.layout-topbar #shell{flex-direction:column}
+html.layout-topbar #sidebar{width:auto;flex-direction:row;align-items:center;border-right:0;border-bottom:1px solid var(--stroke);padding:10px 18px;gap:14px}
+html.layout-topbar .brand{padding:0 12px 0 0}
+html.layout-topbar #nav{flex-direction:row;flex:1;overflow-x:auto;overflow-y:hidden;gap:2px}
+html.layout-topbar .navitem{white-space:nowrap;padding:8px 12px}
+html.layout-topbar .side-foot{margin-left:auto;padding:0}
+html.layout-topbar #main{padding:24px 34px}
+html.layout-topbar .page{max-width:1100px}
+/* looks: effects */
+html.fx-glass .card{background:rgba(255,255,255,.06);backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%)}
+html.fx-glow #sidebar{box-shadow:inset -40px 0 90px -60px var(--a1)}
+html.fx-glow body{background:radial-gradient(900px 520px at 8% 18%,color-mix(in srgb,var(--a1) 20%,transparent) 0,transparent 60%),radial-gradient(1000px 600px at 82% -10%,#1e1838 0,#0a0c14 55%)}
+html.fx-calm *{transition:none!important;animation:none!important}
+html.fx-dense .card{padding:14px;border-radius:14px}
+html.fx-dense #main{padding:20px 24px}
+html.fx-dense .wgrid{gap:10px}
+html.fx-dense .phead h1{font-size:22px}
+/* store */
+.acard.app{flex-direction:column;align-items:stretch;gap:10px}
+.arow{display:flex;gap:12px;align-items:center}
+.aicon{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:var(--panel2);flex:none}
+.aicon svg{width:26px;height:26px}
+.arow>div{flex:1;min-width:0}
+.badge{font-family:var(--mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--txt2);border:1px solid var(--stroke);border-radius:6px;padding:2px 6px;margin-left:6px}
+.badge.on{color:var(--a2);border-color:var(--a2)}
+.abtns{display:flex;gap:6px;flex-wrap:wrap}
+.abtns .btn{padding:7px 12px;font-size:12px}
+.adesc{font-size:13px;color:var(--txt2);line-height:1.5}
+.apreview svg{border-radius:10px;display:block}
+.storemain .card.look{margin-top:0}
+.lookrow{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.lookrow b{display:block;font-size:14px}
+.lookrow .muted{margin-top:2px}
+.storemain h4{grid-column:1/-1;font-family:var(--mono);font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--txt2);margin:6px 0 -4px}
+.storemain .muted.full{grid-column:1/-1}
 /* skins */
 .skins{display:flex;flex-wrap:wrap;gap:8px}
 .skin{border:1px solid var(--stroke);background:var(--panel);color:var(--txt);border-radius:10px;padding:8px 13px;cursor:pointer;font:inherit;font-size:12px;font-weight:600;position:relative;padding-left:26px}

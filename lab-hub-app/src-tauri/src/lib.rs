@@ -68,6 +68,37 @@ fn server_url() -> String {
     std::env::var("LAB_SERVER").unwrap_or_else(|_| "http://192.168.1.115:8090".to_string())
 }
 
+/// Where the install wizard leaves its note for the app.
+fn profile_path() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+    #[cfg(windows)]
+    return std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("LAB").join("profile.json"));
+    #[cfg(target_os = "macos")]
+    return std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library").join("Application Support").join("LAB").join("profile.json"));
+    #[cfg(all(unix, not(target_os = "macos")))]
+    return std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config").join("lab").join("profile.json"));
+    #[allow(unreachable_code)]
+    None
+}
+
+/// The install wizard writes {id, account_id, account_name, server, …} to disk
+/// after it analyses the PC, so the app is personalised — and signed in — from
+/// its very first launch. Returns {found:false} when there is no note.
+#[tauri::command]
+fn profile_hint() -> serde_json::Value {
+    let Some(p) = profile_path() else { return serde_json::json!({ "found": false }) };
+    match std::fs::read_to_string(&p).ok().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()) {
+        Some(mut v) => {
+            if let Some(o) = v.as_object_mut() {
+                o.insert("found".into(), serde_json::Value::Bool(true));
+                o.insert("path".into(), serde_json::Value::String(p.to_string_lossy().to_string()));
+            }
+            v
+        }
+        None => serde_json::json!({ "found": false, "path": p.to_string_lossy() }),
+    }
+}
+
 // ---------------------------------------------------------------- live telemetry
 /// One long-lived `System` so CPU percentages are real deltas between calls
 /// (sysinfo needs two refreshes to compute usage — we keep the first one).
@@ -325,7 +356,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(Telemetry(Mutex::new(System::new_all())))
-        .invoke_handler(tauri::generate_handler![device_info, server_url, quick_load, usage_snapshot])
+        .invoke_handler(tauri::generate_handler![device_info, server_url, profile_hint, quick_load, usage_snapshot])
         .run(tauri::generate_context!())
         .expect("error while running L.A.B Hub");
 }

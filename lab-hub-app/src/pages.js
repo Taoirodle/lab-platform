@@ -52,32 +52,7 @@ LAB.register({ id: 'sauce', label: 'The Sauce', icon: I.sauce, order: 4,
   }
 });
 
-// 5 · App Store (categories sidebar) -----------------------------------------
-LAB.register({ id: 'appstore', label: 'App Store', icon: I.store, order: 5,
-  async render(el, ctx) {
-    el.innerHTML = head('App Store', 'Apps, overhauls, effects, themes and widgets — packaged and Hub-side.');
-    const CATS = [
-      { k: 'suggested', label: 'Suggested' }, { k: 'Productivity', label: 'Productivity' }, { k: 'Creativity', label: 'Creativity' },
-      { k: 'Entertainment', label: 'Games' }, { k: 'System', label: 'Utility' },
-      { k: 'overhaul', label: 'Hub overhauls' }, { k: 'effect', label: 'Effects' }, { k: 'skin', label: 'Colour / themes' }, { k: 'widget', label: 'Widgets' }
-    ];
-    const box = LAB.el('div', 'storewrap'); el.appendChild(box);
-    box.innerHTML = `<div class="storeside" id="ss"></div><div class="storemain" id="sm"></div>`;
-    box.querySelector('#ss').innerHTML = CATS.map((c, i) => `<button class="cat ${i === 0 ? 'on' : ''}" data-k="${c.k}">${c.label}</button>`).join('');
-    const [apps, gens] = await Promise.all([LAB.api('/api/store/apps').catch(() => ({ apps: [] })), LAB.api('/api/hub/generations').catch(() => ({ skins: [], widgets: [] }))]);
-    function paint(k) {
-      const sm = box.querySelector('#sm');
-      if (k === 'skin') { sm.innerHTML = (gens.skins || []).map(s => card(s.title, s.summary, (s.payload && s.payload.vars && s.payload.vars['--a1']) || '#888')).join('') || soon('AI colour themes'); return; }
-      if (k === 'widget') { sm.innerHTML = (gens.widgets || []).map(w => card(w.title, w.summary, '#6fb4ff')).join('') || soon('AI widgets'); return; }
-      if (k === 'overhaul' || k === 'effect') { sm.innerHTML = soon(k === 'overhaul' ? 'full Hub reskins (layout, shapes, motion, sound)' : 'visual effects + customisations'); return; }
-      const list = (apps.apps || []).filter(a => k === 'suggested' ? true : a.category === k);
-      sm.innerHTML = list.length ? list.map(a => card(a.name, a.tagline, a.accent)).join('') : soon(k + ' apps');
-    }
-    function card(name, sub, accent) { return `<div class="acard"><div class="adot" style="background:${accent || '#888'}"></div><div><div class="an">${LAB.esc(name)}</div><div class="as">${LAB.esc(sub || '')}</div></div></div>`; }
-    box.querySelectorAll('.cat').forEach(b => b.onclick = () => { box.querySelectorAll('.cat').forEach(x => x.classList.toggle('on', x === b)); paint(b.dataset.k); });
-    paint('suggested');
-  }
-});
+// 5 · App Store — lives in modules/appstore.js (installs, overhauls, effects, themes, widgets)
 
 // 6 · Automations — "when X, do Y" (locked in as slot 6) --------------------
 LAB.register({ id: 'automations', label: 'Automations', icon: I.bolt, order: 6,

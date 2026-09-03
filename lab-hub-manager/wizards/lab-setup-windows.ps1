@@ -74,6 +74,10 @@ try {
   if ($p.theme) { Write-Host "  Theme     : $($p.theme)" -ForegroundColor White }
   Write-Host "`n  $($p.report)`n" -ForegroundColor Gray
   Write-Host "  Profile id: $($res.id)" -ForegroundColor DarkGray
+  # leave a note for the app: it reads this on first launch and is personalised + signed in immediately
+  $hintDir = Join-Path $env:LOCALAPPDATA "LAB"; New-Item -ItemType Directory -Force -Path $hintDir | Out-Null
+  @{ id = $res.id; account_id = $acct.id; account_name = $acct.name; server = $Server; archetype = $p.archetype; at = (Get-Date).ToString("o") } |
+    ConvertTo-Json | Set-Content -Path (Join-Path $hintDir "profile.json") -Encoding UTF8
 } catch { Write-Host "  ✗ Could not reach the agents: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
 
 # 4) fetch the app (once CI has published a build) ---------------------------
