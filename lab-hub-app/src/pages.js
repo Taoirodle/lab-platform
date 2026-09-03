@@ -26,10 +26,21 @@ LAB.register({ id: 'dashboard', label: 'Dashboard', icon: I.home, order: 1,
     el.innerHTML = head('Good day' + (ctx.me ? ', ' + LAB.esc(ctx.me.name) : ''), 'Your personal L.A.B — this whole app is yours.');
     const grid = LAB.el('div', 'grid'); el.appendChild(grid);
     grid.innerHTML = `
-      <div class="card"><h3>This machine</h3><div class="big" id="d-host">…</div><div class="muted" id="d-spec">reading…</div></div>
+      <div class="card"><h3>This machine</h3><div class="big" id="d-host">…</div><div class="muted" id="d-spec">reading…</div><div class="minigauges" id="d-live"></div></div>
       <div class="card"><h3>Shared with the family</h3><div id="d-todo" class="muted">loading…</div></div>
       <div class="card"><h3>Your profile</h3><div class="big">${LAB.esc((ctx.profile && ctx.profile.personalization && ctx.profile.personalization.archetype) || 'Not set')}</div><div class="muted">${ctx.profile ? 'personalized by your L.A.B agents' : 'run the setup wizard to personalize'}</div></div>`;
-    if (ctx.device) { el.querySelector('#d-host').textContent = ctx.device.hostname || 'this PC'; el.querySelector('#d-spec').textContent = `${ctx.device.cpu || ''} · ${ctx.device.ram_gb}GB · ${ctx.device.os}`; }
+    if (ctx.device) {
+      el.querySelector('#d-host').textContent = ctx.device.hostname || 'this PC'; el.querySelector('#d-spec').textContent = `${ctx.device.cpu || ''} · ${ctx.device.ram_gb}GB · ${ctx.device.os}`;
+      // live load, polled only while this tile is on screen
+      const live = el.querySelector('#d-live');
+      const tick = async () => {
+        if (!document.body.contains(live)) return clearInterval(iv);
+        const q = await LAB.invoke('quick_load'); if (!q) return;
+        const up = LAB.stats ? LAB.stats.fmtUp(q.uptime_s) : Math.round(q.uptime_s / 3600) + 'h';
+        live.innerHTML = `<span><i>CPU</i>${Math.round(q.cpu)}%</span><span><i>RAM</i>${Math.round(100 * q.mem_used_mb / Math.max(1, q.mem_total_mb))}%</span><span><i>Up</i>${up}</span>`;
+      };
+      const iv = setInterval(tick, 5000); tick();
+    }
     else { el.querySelector('#d-host').textContent = 'Web preview'; el.querySelector('#d-spec').textContent = 'native specs show in the installed app'; }
     LAB.api('/api/shared/todos').then(t => { const open = t.filter(x => !x.done).slice(0, 4); el.querySelector('#d-todo').innerHTML = open.length ? open.map(x => '• ' + LAB.esc(x.text)).join('<br>') : 'all clear'; }).catch(() => {});
   }
@@ -173,15 +184,7 @@ LAB.register({ id: 'device', label: 'Device', icon: I.device, order: 8,
   }
 });
 
-// 9 · Stats (label + focus depend on archetype) ------------------------------
-LAB.register({ id: 'stats', label: 'Stats', icon: I.stats, order: 9,
-  dynLabel(ctx) { return (ctx.profile && ctx.profile.personalization && ctx.profile.personalization.statsKind) || 'Stats'; },
-  render(el, ctx) {
-    const kind = (ctx.profile && ctx.profile.personalization && ctx.profile.personalization.statsKind) || 'Usage stats';
-    el.innerHTML = head(kind, 'Insight into how you actually use this machine.');
-    el.appendChild(LAB.el('div', 'card', soon(kind.toLowerCase() + ' — hours, sessions, top apps, trends')));
-  }
-});
+// 9 · Stats — lives in modules/stats.js (real data from the native sampler) --
 
 // 10 · Settings --------------------------------------------------------------
 LAB.register({ id: 'settings', label: 'Settings', icon: I.cog, order: 10,
@@ -192,6 +195,13 @@ LAB.register({ id: 'settings', label: 'Settings', icon: I.cog, order: 10,
       <div class="prow"><span>Runtime</span><b>${LAB.isNative() ? 'Native (Tauri)' : 'Browser preview'}</b></div>
       <div class="prow"><span>Version</span><b>v${window.LAB_CONFIG.APP_VERSION}</b></div>`;
     el.appendChild(c);
+    if (LAB.isNative()) {
+      const on = LAB.store.get('telemetry') !== false;
+      const tele = LAB.el('div', 'card');
+      tele.innerHTML = `<h3>Usage measuring</h3><div class="prow"><span>Sample what's in front once a minute — it powers Stats. Window titles never leave this PC.</span><button class="btn ${on ? 'pri' : ''}" id="t-tog">${on ? 'On' : 'Off'}</button></div>`;
+      tele.querySelector('#t-tog').onclick = () => { const next = !on; LAB.store.set('telemetry', next); if (next) LAB.telemetry.start(); else LAB.telemetry.stop(); LAB.go('settings'); };
+      el.appendChild(tele);
+    }
     const th = LAB.el('div', 'card'); th.innerHTML = '<h3>Theme</h3><div class="skins" id="skl"></div>'; el.appendChild(th);
     const g = await LAB.api('/api/hub/generations').catch(() => ({ skins: [] }));
     const cur = LAB.store.get('skin');

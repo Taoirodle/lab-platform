@@ -210,6 +210,21 @@ CREATE TABLE IF NOT EXISTS device_profiles (
   personalization JSONB,     -- agent-generated: modules, theme, personalized tab, doc
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Personal-app usage telemetry (the Stats page). One row per device-minute:
+-- which app was in front, what kind of thing it is, machine load, away/active.
+-- Window titles are never sent here by design.
+CREATE TABLE IF NOT EXISTS usage_samples (
+  device_id TEXT NOT NULL,
+  account_id BIGINT,
+  ts TIMESTAMPTZ NOT NULL,
+  app TEXT,
+  category TEXT,
+  cpu SMALLINT,
+  mem SMALLINT,
+  idle BOOLEAN NOT NULL DEFAULT false,
+  PRIMARY KEY (device_id, ts)
+);
+CREATE INDEX IF NOT EXISTS usage_samples_ts_idx ON usage_samples (ts DESC);
 INSERT INTO settings(key,value) VALUES ('ai', '{"activity":5,"aggressiveness":5,"buildingPaused":false}')
   ON CONFLICT (key) DO NOTHING;
 `;
@@ -351,4 +366,58 @@ function audit(actor, action, detail) {
   return pool.query('INSERT INTO audit(actor,action,detail) VALUES($1,$2,$3)', [actor, action, detail ? JSON.stringify(detail) : null]).catch(() => {});
 }
 
-module.exports = { pool, init, isReady, health, admins, updates, devices, settings, accounts, events, audit, analytics, installs };
+// Personal-app usage telemetry → the Stats page. Ingest is idempotent per
+// (device, minute); summaries are computed in the caller's timezone.
+function safeTz(tz) {
+  tz = String(tz || 'UTC');
+  if (!/^[A-Za-z0-9_\/+\-]{1,64}$/.test(tz)) return 'UTC';
+  try { new Intl.DateTimeFormat('en', { timeZone: tz }); return tz; } catch { return 'UTC'; }
+}
+const usage = {
+  ingest: async ({ device_id, account_id, hostname, os, samples }) => {
+    const s = (samples || []).slice(-600).filter(x => x && Number.isFinite(+x.t) && +x.t > 1e9);
+    if (!s.length) return { inserted: 0 };
+    const r = await pool.query(
+      `INSERT INTO usage_samples(device_id,account_id,ts,app,category,cpu,mem,idle)
+       SELECT $1,$2,to_timestamp(t),app,cat,cpu,mem,idle
+       FROM unnest($3::bigint[],$4::text[],$5::text[],$6::int[],$7::int[],$8::boolean[]) AS u(t,app,cat,cpu,mem,idle)
+       ON CONFLICT (device_id, ts) DO NOTHING`,
+      [String(device_id), account_id || null,
+        s.map(x => Math.floor(+x.t)), s.map(x => x.app ? String(x.app).slice(0, 80) : null), s.map(x => String(x.cat || 'Other').slice(0, 24)),
+        s.map(x => Math.max(0, Math.min(100, Math.round(+x.cpu || 0)))), s.map(x => Math.max(0, Math.min(100, Math.round(+x.mem || 0)))), s.map(x => !!x.idle)]);
+    // the app registers itself as a device so the Admin fleet view sees it
+    await pool.query(
+      `INSERT INTO devices(id,name,kind,os,account_id,last_seen,status) VALUES($1,$2,'hub-app',$3,$4,now(),'online')
+       ON CONFLICT (id) DO UPDATE SET last_seen=now(), status='online',
+         account_id=COALESCE(EXCLUDED.account_id, devices.account_id), name=COALESCE(EXCLUDED.name, devices.name), os=COALESCE(EXCLUDED.os, devices.os)`,
+      [String(device_id), hostname || null, os || null, account_id || null]).catch(() => {});
+    return { inserted: r.rowCount };
+  },
+  summary: async ({ device_id, days, tz }) => {
+    days = Math.max(1, Math.min(90, Math.round(+days) || 14)); tz = safeTz(tz);
+    const q = (sql, p) => pool.query(sql, p).then(r => r.rows);
+    const [byDay, top, hoursRows, meta] = await Promise.all([
+      q(`SELECT to_char(ts AT TIME ZONE $3,'YYYY-MM-DD') d, category, count(*)::int mins FROM usage_samples
+         WHERE device_id=$1 AND ts >= now() - make_interval(days => $2::int) AND NOT idle GROUP BY 1,2`, [device_id, days, tz]),
+      q(`SELECT app, min(category) category, count(*)::int mins FROM usage_samples
+         WHERE device_id=$1 AND ts >= now() - interval '7 days' AND NOT idle AND app IS NOT NULL GROUP BY app ORDER BY mins DESC LIMIT 10`, [device_id]),
+      q(`SELECT extract(hour from ts AT TIME ZONE $2)::int h, count(*)::int mins FROM usage_samples
+         WHERE device_id=$1 AND ts >= now() - interval '14 days' AND NOT idle GROUP BY 1`, [device_id, tz]),
+      q(`SELECT count(*)::int total, (count(*) FILTER (WHERE NOT idle))::int active, min(ts) first_seen, max(ts) last_seen FROM usage_samples WHERE device_id=$1`, [device_id])
+    ]);
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const [Y, M, D] = todayStr.split('-').map(Number); const base = Date.UTC(Y, M - 1, D);
+    const list = []; for (let i = days - 1; i >= 0; i--) list.push({ d: new Date(base - i * 86400000).toISOString().slice(0, 10), cats: {}, total: 0 });
+    const idx = Object.fromEntries(list.map((x, i) => [x.d, i]));
+    for (const r of byDay) { const e = list[idx[r.d]]; if (!e) continue; const k = r.category || 'Other'; e.cats[k] = (e.cats[k] || 0) + r.mins; e.total += r.mins; }
+    const hours = new Array(24).fill(0); for (const r of hoursRows) if (r.h >= 0 && r.h < 24) hours[r.h] = r.mins;
+    const m = meta[0] || {};
+    return { device_id, tz, days: list, top_apps: top, hours, total_minutes: m.total || 0, active_minutes: m.active || 0, first_seen: m.first_seen, last_seen: m.last_seen };
+  },
+  devices: () => pool.query(
+    `SELECT d.id, d.name, d.os, d.account_id, a.name AS account, d.last_seen,
+       (SELECT count(*) FROM usage_samples u WHERE u.device_id=d.id AND u.ts > now() - interval '7 days' AND NOT u.idle)::int AS active_7d
+     FROM devices d LEFT JOIN accounts a ON a.id=d.account_id WHERE d.kind='hub-app' ORDER BY d.last_seen DESC NULLS LAST`).then(r => r.rows)
+};
+
+module.exports = { pool, init, isReady, health, admins, updates, devices, settings, accounts, events, audit, analytics, installs, usage };

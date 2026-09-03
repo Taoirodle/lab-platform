@@ -21,7 +21,7 @@ const research = require('./research');
 const conductor = require('./conductor');
 const wizard = require('./wizard');
 
-const VERSION = 'M-000018';
+const VERSION = 'M-000019';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
@@ -38,7 +38,7 @@ app.use(express.json());
 const viaTunnel = req => !!(req.headers['cf-connecting-ip'] || req.headers['cf-ray'] || req.headers['x-forwarded-host']);
 const SENSITIVE = [
   /^\/$/, /^\/admin(\/|$)/, /^\/install(\/|$)/, /^\/showcase(\/|$)/,
-  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase)/
+  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/devices)/
 ];
 app.use(async (req, res, next) => {
   if (!viaTunnel(req)) return next();                         // on the home network → trusted
@@ -243,6 +243,23 @@ app.get('/api/wizard/profile/:id', wrap(async (req, res) => {
   res.json(p);
 }));
 app.get('/api/wizard/devices', wrap(async (req, res) => res.json(await wizard.list())));
+
+// ---- Personal-app usage telemetry → the Stats page ------------------------
+// The native app samples what's in front once a minute and posts batches here.
+// Summaries are per device (only the app knows its device id) in the caller's tz.
+app.post('/api/usage/ingest', wrap(async (req, res) => {
+  const b = req.body || {};
+  if (!b.device_id || !Array.isArray(b.samples)) return res.status(400).json({ error: 'device_id + samples[] required' });
+  res.json(await db.usage.ingest({
+    device_id: String(b.device_id).slice(0, 80), account_id: b.account_id ? Number(b.account_id) || null : null,
+    hostname: b.hostname ? String(b.hostname).slice(0, 80) : null, os: b.os ? String(b.os).slice(0, 40) : null, samples: b.samples
+  }));
+}));
+app.get('/api/usage/summary', wrap(async (req, res) => {
+  if (!req.query.device_id) return res.status(400).json({ error: 'device_id required' });
+  res.json(await db.usage.summary({ device_id: String(req.query.device_id).slice(0, 80), days: req.query.days, tz: req.query.tz }));
+}));
+app.get('/api/usage/devices', wrap(async (req, res) => res.json(await db.usage.devices())));   // admin overview (home-network only)
 
 // ---- Showcase: the "L.A.B ONE" keynote — cue channel + real light choreography ----
 app.post('/api/showcase/cue', wrap(async (req, res) => {

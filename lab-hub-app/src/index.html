@@ -21,6 +21,10 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script src="pages.js"></script>
-  <script>LAB.boot();</script>
+  <!-- feature modules: each one registers itself; drop a file in, it's in the app -->
+  <script src="modules/telemetry.js"></script>
+  <script src="modules/charts.js"></script>
+  <script src="modules/stats.js"></script>
+  <script>LAB.boot().then(() => LAB.telemetry.start());</script>
 </body>
 </html>

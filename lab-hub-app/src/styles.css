@@ -71,6 +71,27 @@ body{font-family:var(--disp);color:var(--txt);background:radial-gradient(1000px 
 .rtile span{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--txt2);font-weight:600}
 .rtile.on{background:linear-gradient(160deg,rgba(255,207,111,.18),rgba(255,157,92,.05));border-color:rgba(255,207,111,.35)}
 .rtile.on span{color:#ffcf6f}
+/* stats + live tiles */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:18px}
+.kpi{background:var(--panel);border:1px solid var(--stroke);border-radius:16px;padding:16px}
+.kpi span{display:block;font-family:var(--mono);font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--txt2)}
+.kpi b{display:block;font-size:24px;font-weight:800;margin-top:6px;letter-spacing:-.02em}
+.kpi i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:8px;vertical-align:2px}
+.liverow{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.fgname{font-size:18px;font-weight:800;display:flex;align-items:center;gap:9px}
+.fgname .cat{font-family:var(--mono);font-size:11px;color:var(--txt2);font-weight:600;letter-spacing:1px;text-transform:uppercase}
+.fgtitle{max-width:46ch;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none}
+.gauges{display:flex;gap:20px}
+.gauge span{display:block;font-family:var(--mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--txt2)}
+.gauge b{font-size:18px;font-weight:800}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:12px;font-size:12px;color:var(--txt2)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+canvas.chart{width:100%;display:block}
+.minigauges{display:flex;gap:16px;margin-top:12px}
+.minigauges span{font-weight:800;font-size:15px}
+.minigauges i{display:block;font-style:normal;font-family:var(--mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--txt2)}
+.privacy{font-size:12px;color:var(--txt2);margin-top:14px;line-height:1.5}
 /* skins */
 .skins{display:flex;flex-wrap:wrap;gap:8px}
 .skin{border:1px solid var(--stroke);background:var(--panel);color:var(--txt);border-radius:10px;padding:8px 13px;cursor:pointer;font:inherit;font-size:12px;font-weight:600;position:relative;padding-left:26px}
