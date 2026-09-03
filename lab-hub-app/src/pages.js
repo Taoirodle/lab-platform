@@ -20,56 +20,10 @@ const I = {
 const head = (t, s) => `<div class="phead"><h1>${LAB.esc(t)}</h1>${s ? `<p>${LAB.esc(s)}</p>` : ''}</div>`;
 const soon = (what) => `<div class="soon">Module scaffolded — ${LAB.esc(what)} lands here. The framework is ready; content is pluggable.</div>`;
 
-// 1 · Dashboard --------------------------------------------------------------
-LAB.register({ id: 'dashboard', label: 'Dashboard', icon: I.home, order: 1,
-  async render(el, ctx) {
-    el.innerHTML = head('Good day' + (ctx.me ? ', ' + LAB.esc(ctx.me.name) : ''), 'Your personal L.A.B — this whole app is yours.');
-    const grid = LAB.el('div', 'grid'); el.appendChild(grid);
-    grid.innerHTML = `
-      <div class="card"><h3>This machine</h3><div class="big" id="d-host">…</div><div class="muted" id="d-spec">reading…</div><div class="minigauges" id="d-live"></div></div>
-      <div class="card"><h3>Shared with the family</h3><div id="d-todo" class="muted">loading…</div></div>
-      <div class="card"><h3>Your profile</h3><div class="big">${LAB.esc((ctx.profile && ctx.profile.personalization && ctx.profile.personalization.archetype) || 'Not set')}</div><div class="muted">${ctx.profile ? 'personalized by your L.A.B agents' : 'run the setup wizard to personalize'}</div></div>`;
-    if (ctx.device) {
-      el.querySelector('#d-host').textContent = ctx.device.hostname || 'this PC'; el.querySelector('#d-spec').textContent = `${ctx.device.cpu || ''} · ${ctx.device.ram_gb}GB · ${ctx.device.os}`;
-      // live load, polled only while this tile is on screen
-      const live = el.querySelector('#d-live');
-      const tick = async () => {
-        if (!document.body.contains(live)) return clearInterval(iv);
-        const q = await LAB.invoke('quick_load'); if (!q) return;
-        const up = LAB.stats ? LAB.stats.fmtUp(q.uptime_s) : Math.round(q.uptime_s / 3600) + 'h';
-        live.innerHTML = `<span><i>CPU</i>${Math.round(q.cpu)}%</span><span><i>RAM</i>${Math.round(100 * q.mem_used_mb / Math.max(1, q.mem_total_mb))}%</span><span><i>Up</i>${up}</span>`;
-      };
-      const iv = setInterval(tick, 5000); tick();
-    }
-    else { el.querySelector('#d-host').textContent = 'Web preview'; el.querySelector('#d-spec').textContent = 'native specs show in the installed app'; }
-    LAB.api('/api/shared/todos').then(t => { const open = t.filter(x => !x.done).slice(0, 4); el.querySelector('#d-todo').innerHTML = open.length ? open.map(x => '• ' + LAB.esc(x.text)).join('<br>') : 'all clear'; }).catch(() => {});
-  }
-});
+// 1 · Dashboard — lives in modules/dashboard.js (widget grid) -----------------
 
-// 2 · Profile ----------------------------------------------------------------
-LAB.register({ id: 'profile', label: 'Profile', icon: I.user, order: 2,
-  render(el, ctx) {
-    const a = (ctx.profile && ctx.profile.personalization) || {};
-    el.innerHTML = head('Profile', 'Who you are on the L.A.B.') + `
-      <div class="card"><div class="prow"><span>Name</span><b>${LAB.esc(ctx.me ? ctx.me.name : '—')}</b></div>
-      <div class="prow"><span>Archetype</span><b>${LAB.esc(a.archetype || 'not set')}</b></div>
-      <div class="prow"><span>Signature tab</span><b>${LAB.esc(a.personalizedTab || '—')}</b></div>
-      <div class="prow"><span>Theme</span><b>${LAB.esc(a.theme || 'default')}</b></div></div>` + soon('avatars, per-member privacy, linked accounts');
-  }
-});
-
-// 3 · Calendar ---------------------------------------------------------------
-LAB.register({ id: 'calendar', label: 'Calendar', icon: I.cal, order: 3,
-  async render(el, ctx) {
-    el.innerHTML = head('Calendar', 'Your events + the family calendar. Link an external calendar to sync.');
-    const links = LAB.el('div', 'card'); links.innerHTML = `<h3>Connect a calendar</h3><div class="btnrow">
-      <button class="btn" disabled>Apple</button><button class="btn" disabled>Google</button><button class="btn" disabled>Outlook</button></div>
-      <div class="muted" style="margin-top:8px">CalDAV / OAuth link comes online with the off-home tunnel (secure sync).</div>`;
-    el.appendChild(links);
-    const shared = LAB.el('div', 'card'); shared.innerHTML = '<h3>Family calendar</h3><div id="c-ev" class="muted">loading…</div>'; el.appendChild(shared);
-    LAB.api('/api/shared/events').then(ev => { shared.querySelector('#c-ev').innerHTML = ev.length ? ev.map(e => `<div class="prow"><span>${LAB.esc(e.day)}</span><b>${LAB.esc(e.title)}</b></div>`).join('') : 'nothing upcoming'; }).catch(() => {});
-  }
-});
+// 2 · Profile — lives in modules/profile.js (sign-in, avatar, privacy, devices, PIN)
+// 3 · Calendar — lives in modules/calendar.js (month grid, agenda, ICS feeds)
 
 // 4 · The Sauce (real, talks to the on-server brain) -------------------------
 LAB.register({ id: 'sauce', label: 'The Sauce', icon: I.sauce, order: 4,

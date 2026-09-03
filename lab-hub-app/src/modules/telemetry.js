@@ -39,7 +39,8 @@ LAB.telemetry = {
     this.pending.push(sm);
     LAB.store.set('tele_hist', this.history.slice(-1440));
     LAB.store.set('tele_pending', this.pending.slice(-600));
-    if (this.pending.length >= this.SYNC_EVERY) this.sync();
+    // first sample of a session syncs at once (registers the device right away); then every batch
+    if (this.pending.length >= this.SYNC_EVERY || !this.syncedOnce) { this.syncedOnce = true; this.sync(); }
     document.dispatchEvent(new CustomEvent('lab:telemetry', { detail: s }));
     return s;
   },

@@ -14,11 +14,16 @@ const LAB = (window.LAB = {
   ctx: { me: null, profile: null, device: null, server: window.LAB_CONFIG.SERVER },
 
   // --- module registration (the modular core) ---
-  register(mod) { this.pages.push(mod); this.pages.sort((a, b) => (a.order || 99) - (b.order || 99)); },
+  register(mod) {
+    // same id registered again = replace (lets a module file override a stub, and skins/overhauls swap pages)
+    const i = this.pages.findIndex(p => p.id === mod.id);
+    if (i >= 0) this.pages[i] = mod; else this.pages.push(mod);
+    this.pages.sort((a, b) => (a.order || 99) - (b.order || 99));
+  },
 
   // --- helpers shared by every page ---
   el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; },
-  esc(s) { return String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); },
+  esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },
   api(path, opts) { return fetch(this.ctx.server + path, opts).then(async r => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'error'); return j; }); },
   store: {
     get(k) { try { return JSON.parse(localStorage.getItem('labapp_' + k)); } catch { return null; } },

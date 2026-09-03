@@ -16,21 +16,22 @@
 ## Backlog (priority order)
 
 ### 1 · Native telemetry → real Stats page  ⟵ the reason the app is native
-- [ ] Rust `usage_snapshot` command: CPU load %, RAM used/total, uptime, top processes (name, cpu %, mem MB), battery if present.
-- [ ] Rust process → category classifier catalog (Gaming / Work / Creativity / Browsing / Comms / System) — data table in Rust, extensible from JS.
-- [ ] App sampler: every 60 s while running → local ring buffer (localStorage) → batch `POST /api/stats/ingest` (device id + account id).
-- [ ] Server: `usage_samples` table + `/api/stats/ingest` + `/api/stats/summary?device=&days=` (hours by category/day, top apps, active hours, streaks).
-- [ ] Stats page: canvas charts (no libs) — 14-day stacked bars by category, top apps, today's timeline, "peak hours".
-- [ ] Dashboard: live CPU/RAM/uptime tile (native only; honest fallback in browser).
+- [x] Rust `usage_snapshot`: CPU/RAM/uptime, foreground app + title (Win32), top processes merged by name, idle seconds (GetLastInputInfo). Battery: sysinfo can't — skipped honestly.
+- [x] Rust classifier catalog (Gaming/Work/Creativity/Browsing/Comms/Entertainment/System/Other) + game-folder detection by exe path.
+- [x] App sampler (`modules/telemetry.js`): 60 s cadence, 24 h local ring, batches to `/api/usage/ingest`, first sample syncs immediately; off switch in Settings.
+- [x] Server M-000019: `usage_samples` (PK device+minute → idempotent), `/api/usage/ingest`, `/api/usage/summary` (tz-aware days/top apps/hours), `/api/usage/devices`.
+- [x] Stats page (`modules/stats.js` + `modules/charts.js`): live strip, KPIs, 14-day stacked bars, top apps, 24 h heat strip, privacy note.
+- [x] Dashboard live machine tile (now the `machine` widget).
 
 ### 2 · Dashboard as a real home screen
-- [ ] Widget grid: machine live, today's events, shared to-dos with working checkboxes (PATCH), house quick-scenes (Conductor), Sauce quick-ask, "For you" teaser.
-- [ ] Widgets are modules too (`LAB.widgets.register`) so the App Store can add/remove them.
+- [x] Widget grid (`modules/widgets.js` + `modules/dashboard.js`): machine live, today-so-far usage, family to-do with working checkboxes + add, coming-up events, house rooms/scenes, Sauce quick-ask, For-you teaser. Move/remove per widget, add bar; layout saved per install.
+- [x] Widgets are modules (`LAB.widgets.register`); AI-generated widgets (tips/checklist/focus) render via trusted templates; `LAB.register` now replaces by id.
+- [x] FIX: `withGlobalTauri` was never on → every native call had been silently falling back to "browser mode" in the compiled app. Now proven: exe registers itself on the server within 12 s.
 
 ### 3 · Calendar — real linking without OAuth
-- [ ] Server: `calendar_feeds` (account, name, ics_url, colour) + fetcher every 30 min + minimal ICS parser (VEVENT: DTSTART/DTEND/SUMMARY/LOCATION/RRULE daily·weekly·monthly basic) → `calendar_events`.
-- [ ] `/api/calendar/feeds` CRUD, `/api/calendar/events?from=&to=` (merges feed events + shared family events).
-- [ ] App: month grid + agenda, add feed (Google "secret iCal address" / Apple public share / Outlook "publish ICS" — real instructions per provider), create family event.
+- [x] Server M-000020 `calendar.js`: ICS fetch (20 s timeout, 5 MB cap, LAN/loopback blocked) + dependency-free parser (folding, escapes, TZID incl. Windows names, DATE/UTC/zoned, DURATION, EXDATE, RECURRENCE-ID overrides, STATUS:CANCELLED) + RRULE expansion (DAILY/WEEKLY BYDAY/MONTHLY BYMONTHDAY+ordinal BYDAY/YEARLY, COUNT/UNTIL/INTERVAL, DST-safe). 10/10 unit cases pass. Refresh every 30 min.
+- [x] `/api/calendar/feeds` (list masked URLs / add+fetch / refresh / delete), `/api/calendar/events?from&to&account_id` merged with family events. Verified live with Google's SA-holidays ICS (25 events).
+- [x] App `modules/calendar.js`: month grid (Mon-start, chips by feed colour) + day agenda, add family event, link-a-calendar with per-provider steps (Google/Apple/Outlook/Other), sync/remove, share-with-family toggle. "Coming up" widget reads the merged feed.
 
 ### 4 · Profile
 - [ ] Server: accounts get `avatar` (emoji+colour), `privacy` JSON (share_stats, share_calendar), `PATCH /api/accounts/:id`, `GET /api/accounts/:id/devices`.
@@ -61,3 +62,5 @@
 
 ## Log
 - 2026-09-04 00:55 — Run started. Cron installed. Plan written. Repo public; CI re-fired on `app-v0.1.0`.
+- 2026-09-04 02:20 — Chunks 2+3 built + verified (server deployed M-000020; parser unit-tested; real ICS feed linked; exe telemetry end-to-end). withGlobalTauri bug found + fixed.
+- 2026-09-04 01:40 — Chunk 1 shipped (`fbae844`): server deployed + smoke-tested (ingest idempotent, summary tz-correct, idle excluded); `cargo check` + release build green; exe launch-verified (7.5 MB, 38 MB RSS).

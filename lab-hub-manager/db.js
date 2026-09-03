@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS pin TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS avatar JSONB;    -- {emoji, color}
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS privacy JSONB;   -- {share_stats, share_calendar}
 CREATE UNIQUE INDEX IF NOT EXISTS accounts_name_lower ON accounts (lower(name));
 CREATE TABLE IF NOT EXISTS admins (
   id TEXT PRIMARY KEY,
@@ -225,6 +227,29 @@ CREATE TABLE IF NOT EXISTS usage_samples (
   PRIMARY KEY (device_id, ts)
 );
 CREATE INDEX IF NOT EXISTS usage_samples_ts_idx ON usage_samples (ts DESC);
+-- Calendar: external ICS subscriptions (Google/Apple/Outlook) expanded into instances
+CREATE TABLE IF NOT EXISTS calendar_feeds (
+  id TEXT PRIMARY KEY,
+  account_id BIGINT,
+  name TEXT NOT NULL,
+  url TEXT NOT NULL,
+  color TEXT,
+  shared BOOLEAN NOT NULL DEFAULT false,   -- visible to the whole family
+  tz TEXT,
+  last_fetch TIMESTAMPTZ, last_status TEXT, event_count INT DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS calendar_events (
+  id BIGSERIAL PRIMARY KEY,
+  feed_id TEXT NOT NULL REFERENCES calendar_feeds(id) ON DELETE CASCADE,
+  uid TEXT, instance_start BIGINT,
+  title TEXT NOT NULL, location TEXT, description TEXT,
+  start_at TIMESTAMPTZ NOT NULL, end_at TIMESTAMPTZ,
+  all_day BOOLEAN NOT NULL DEFAULT false,
+  day DATE NOT NULL, at_time TEXT, end_time TEXT
+);
+CREATE INDEX IF NOT EXISTS calendar_events_day_idx ON calendar_events (day);
+CREATE INDEX IF NOT EXISTS calendar_events_feed_idx ON calendar_events (feed_id);
 INSERT INTO settings(key,value) VALUES ('ai', '{"activity":5,"aggressiveness":5,"buildingPaused":false}')
   ON CONFLICT (key) DO NOTHING;
 `;
@@ -326,10 +351,21 @@ const analytics = {
 
 // Family accounts (the people who use the Home L.A.B Hub)
 const accounts = {
-  list: () => pool.query('SELECT id,name,role,created_at FROM accounts ORDER BY created_at').then(r => r.rows),
-  create: (name, pin) => pool.query('INSERT INTO accounts(name,role,pin) VALUES($1,$2,$3) RETURNING id,name,role', [name, 'member', pin]).then(r => r.rows[0]),
-  login: (name, pin) => pool.query('SELECT id,name,role FROM accounts WHERE lower(name)=lower($1) AND pin=$2', [name, pin]).then(r => r.rows[0] || null),
-  exists: (name) => pool.query('SELECT 1 FROM accounts WHERE lower(name)=lower($1)', [name]).then(r => r.rowCount > 0)
+  list: () => pool.query('SELECT id,name,role,avatar,created_at FROM accounts ORDER BY created_at').then(r => r.rows),
+  create: (name, pin) => pool.query('INSERT INTO accounts(name,role,pin) VALUES($1,$2,$3) RETURNING id,name,role,avatar,privacy', [name, 'member', pin]).then(r => r.rows[0]),
+  login: (name, pin) => pool.query('SELECT id,name,role,avatar,privacy FROM accounts WHERE lower(name)=lower($1) AND pin=$2', [name, pin]).then(r => r.rows[0] || null),
+  exists: (name) => pool.query('SELECT 1 FROM accounts WHERE lower(name)=lower($1)', [name]).then(r => r.rowCount > 0),
+  get: (id) => pool.query('SELECT id,name,role,avatar,privacy,created_at FROM accounts WHERE id=$1', [id]).then(r => r.rows[0] || null),
+  checkPin: (id, pin) => pool.query('SELECT 1 FROM accounts WHERE id=$1 AND pin=$2', [id, pin]).then(r => r.rowCount > 0),
+  // profile edits: avatar {emoji,color}, privacy {share_stats, share_calendar}; PIN change needs the old PIN (checked by the route)
+  update: (id, { avatar, privacy, pin }) => pool.query(
+    `UPDATE accounts SET avatar=COALESCE($2::jsonb, avatar), privacy=COALESCE($3::jsonb, privacy), pin=COALESCE($4, pin) WHERE id=$1 RETURNING id,name,role,avatar,privacy`,
+    [id, avatar ? JSON.stringify(avatar) : null, privacy ? JSON.stringify(privacy) : null, pin || null]).then(r => r.rows[0] || null),
+  devices: (id) => pool.query(
+    `SELECT d.id, d.name, d.kind, d.os, d.last_seen,
+       (SELECT count(*) FROM usage_samples u WHERE u.device_id=d.id AND u.ts > now() - interval '7 days' AND NOT u.idle)::int AS active_7d
+     FROM devices d WHERE d.account_id=$1 ORDER BY d.last_seen DESC NULLS LAST`, [id]).then(r => r.rows),
+  profiles: (id) => pool.query('SELECT id,os,hostname,archetype,created_at FROM device_profiles WHERE account_id=$1 ORDER BY created_at DESC', [id]).then(r => r.rows)
 };
 
 // Telemetry firehose — what the Dev Team learns from

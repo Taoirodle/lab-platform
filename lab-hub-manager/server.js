@@ -20,8 +20,9 @@ const builders = require('./builders');
 const research = require('./research');
 const conductor = require('./conductor');
 const wizard = require('./wizard');
+const calendar = require('./calendar');
 
-const VERSION = 'M-000019';
+const VERSION = 'M-000021';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
@@ -56,7 +57,7 @@ const wrap = fn => (req, res) => Promise.resolve(fn(req, res)).catch(e => { cons
 // CORS — the Admin Portal (Electron app) reaches the Manager over the LAN
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
@@ -260,6 +261,18 @@ app.get('/api/usage/summary', wrap(async (req, res) => {
   res.json(await db.usage.summary({ device_id: String(req.query.device_id).slice(0, 80), days: req.query.days, tz: req.query.tz }));
 }));
 app.get('/api/usage/devices', wrap(async (req, res) => res.json(await db.usage.devices())));   // admin overview (home-network only)
+
+// ---- Calendar: ICS subscriptions (no OAuth) + merged family view ----------
+app.get('/api/calendar/feeds', wrap(async (req, res) => res.json(await calendar.listFeeds(req.query.account_id ? Number(req.query.account_id) : null))));
+app.post('/api/calendar/feeds', wrap(async (req, res) => {
+  const b = req.body || {};
+  if (!b.url || !/^(https?|webcal):\/\//i.test(String(b.url).trim())) return res.status(400).json({ error: 'Paste an iCal (ICS / webcal) link.' });
+  try { res.json(await calendar.addFeed({ account_id: b.account_id ? Number(b.account_id) : null, name: b.name, url: b.url, color: b.color, shared: !!b.shared })); }
+  catch (e) { res.status(400).json({ error: 'Could not read that calendar: ' + e.message }); }
+}));
+app.post('/api/calendar/feeds/:id/refresh', wrap(async (req, res) => res.json(await calendar.refreshById(req.params.id))));
+app.delete('/api/calendar/feeds/:id', wrap(async (req, res) => res.json(await calendar.removeFeed(req.params.id, req.query.account_id ? Number(req.query.account_id) : null))));
+app.get('/api/calendar/events', wrap(async (req, res) => res.json(await calendar.events({ account_id: req.query.account_id ? Number(req.query.account_id) : null, from: req.query.from, to: req.query.to }))));
 
 // ---- Showcase: the "L.A.B ONE" keynote — cue channel + real light choreography ----
 app.post('/api/showcase/cue', wrap(async (req, res) => {
@@ -465,6 +478,36 @@ app.post('/api/accounts/login', wrap(async (req, res) => {
   if (!a) return res.status(401).json({ error: 'Wrong name or PIN.' });
   res.json(a);
 }));
+// Profile: public shape, PIN-confirmed edits, linked devices
+app.get('/api/accounts/:id', wrap(async (req, res) => {
+  const a = await db.accounts.get(Number(req.params.id)); if (!a) return res.status(404).json({ error: 'no such account' });
+  res.json(a);
+}));
+app.get('/api/accounts/:id/devices', wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const [devices, profiles] = await Promise.all([db.accounts.devices(id), db.accounts.profiles(id)]);
+  res.json({ devices, profiles });
+}));
+app.patch('/api/accounts/:id', wrap(async (req, res) => {
+  const id = Number(req.params.id), b = req.body || {};
+  if (!(await db.accounts.checkPin(id, String(b.pin || '')))) return res.status(401).json({ error: 'Confirm with your PIN.' });
+  const avatar = b.avatar && typeof b.avatar === 'object'
+    ? { emoji: String(b.avatar.emoji || '').slice(0, 8), color: /^#[0-9a-f]{6}$/i.test(b.avatar.color || '') ? b.avatar.color : '#9a86ff' } : null;
+  const privacy = b.privacy && typeof b.privacy === 'object' ? { share_stats: !!b.privacy.share_stats, share_calendar: !!b.privacy.share_calendar } : null;
+  let pin = null;
+  if (b.new_pin != null) { if (!/^\d{4,8}$/.test(String(b.new_pin))) return res.status(400).json({ error: 'A PIN is 4–8 digits.' }); pin = String(b.new_pin); }
+  const a = await db.accounts.update(id, { avatar, privacy, pin });
+  db.audit('account:' + id, 'account.update', { avatar: !!avatar, privacy: !!privacy, pin: !!pin });
+  res.json(a);
+}));
+// The app links its device (and its earlier anonymous samples) to the account that signs in on it
+app.post('/api/usage/link', wrap(async (req, res) => {
+  const b = req.body || {}; const dev = String(b.device_id || '').slice(0, 80), acct = Number(b.account_id);
+  if (!dev || !acct) return res.status(400).json({ error: 'device_id + account_id required' });
+  await db.pool.query('UPDATE devices SET account_id=$2 WHERE id=$1', [dev, acct]).catch(() => {});
+  const r = await db.pool.query('UPDATE usage_samples SET account_id=$2 WHERE device_id=$1 AND account_id IS NULL', [dev, acct]);
+  res.json({ ok: true, linked_samples: r.rowCount });
+}));
 app.post('/api/events', wrap(async (req, res) => {
   const b = req.body || {};
   if (!b.type) return res.status(400).json({ error: 'type required' });
@@ -584,6 +627,7 @@ collectStats();
       await conductor.seed().catch(e => console.error('conductor seed:', e.message));
       devteam.startScheduler();
       startLedgerSchedulers();
+      calendar.start();
       return;
     }
     catch (e) { if (i === 0) console.log('waiting for SQL Brain…', e.code || e.message); await new Promise(r => setTimeout(r, 3000)); }
