@@ -117,6 +117,12 @@
 - [x] Web hub on a phone: at 375 px the page overflowed (clipped buttons, wrapped nav) — added a ≤600 px breakpoint (scrolling nav, stacked cards, shrinking inputs, 16 px inputs to stop iOS zoom); verified docWidth == viewport.
 - [x] `docs/13-hub-app.md` refreshed (home/away/offline/live/palette; lists, automations, devices).
 
+### 17 · Wave eight (pick top-down)
+- [x] Brute-force guard on login + PIN-confirmed edits: 10 wrong PINs per address per 15 min → 429 + Retry-After, `security: pin.lockout` audited. Verified: 10×401 then 429.
+- [x] `GET /api/health/full` (db, data-disk %, last backup age/size, uptime, live screens) + Admin "Health" pills (amber past 30 h without a backup).
+- [x] App "Getting started" card: five real checks (signed in, wizard profile, calendar linked, real device, measuring on), taps jump to the page, retires itself when done.
+- [ ] Rebuild 0.2.5 (stats delta + getting-started), publish, tag.
+
 ---
 
 ## Log

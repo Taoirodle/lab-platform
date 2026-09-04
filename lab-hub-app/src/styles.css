@@ -256,6 +256,9 @@ html.fx-dense .phead h1{font-size:22px}
 .pitem.on{background:var(--panel2)}
 .pitem.answer{display:block;line-height:1.5;cursor:default}
 .pitem.muted{color:var(--txt2);cursor:default}
+/* getting started */
+.startbox{width:20px;height:20px;border-radius:7px;border:1.6px solid var(--stroke);display:grid;place-items:center;font-size:12px;flex:none;margin-top:1px}
+.startbox.ok{background:var(--a1);border-color:var(--a1);color:#0a0c14;font-weight:800}
 /* list chips */
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .chip{border:1px solid var(--stroke);background:var(--panel);color:var(--txt2);border-radius:999px;padding:5px 11px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}

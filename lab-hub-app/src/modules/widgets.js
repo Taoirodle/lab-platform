@@ -8,7 +8,7 @@
 // ============================================================
 LAB.widgets = {
   list: [],
-  DEFAULT: ['machine', 'usage', 'todos', 'today', 'house', 'sauce', 'foryou'],
+  DEFAULT: ['start', 'machine', 'usage', 'todos', 'today', 'house', 'sauce', 'foryou'],
   register(w) { const i = this.list.findIndex(x => x.id === w.id); if (i >= 0) this.list[i] = w; else this.list.push(w); },
   get(id) { return this.list.find(w => w.id === id); },
   installed() { const s = LAB.store.get('widgets'); return Array.isArray(s) ? s : this.DEFAULT.slice(); },
@@ -51,6 +51,27 @@ LAB.widgets = {
 const J = { 'Content-Type': 'application/json' };
 const post = (path, body) => LAB.api(path, { method: 'POST', headers: J, body: JSON.stringify(body || {}) });
 const link = (el, label, go) => { const b = LAB.el('button', 'btn wlink', label); b.dataset.go = go; el.appendChild(b); };
+
+// First runs: a checklist that ticks itself from real state and removes itself when done.
+LAB.widgets.register({ id: 'start', title: 'Getting started', size: 'md',
+  async render(el, ctx) {
+    const [feeds, ents] = await Promise.all([
+      ctx.me ? LAB.api('/api/calendar/feeds?account_id=' + encodeURIComponent(ctx.me.id)).catch(() => []) : Promise.resolve([]),
+      LAB.api('/api/conductor/entities').catch(() => [])
+    ]);
+    const steps = [
+      { ok: !!ctx.me, text: 'Sign in — same name and PIN as the family Hub', go: 'profile' },
+      { ok: !!(ctx.profile && ctx.profile.personalization && ctx.profile.personalization.archetype), text: 'Run the setup wizard so this app shapes itself to your PC', go: 'settings' },
+      { ok: feeds.length > 0, text: 'Link your Google / Apple / Outlook calendar', go: 'calendar' },
+      { ok: ents.some(e => e.driver !== 'virtual'), text: 'Add a real device (WLED strip, WiZ bulb, a sensor)', go: 'automations' },
+      { ok: !LAB.isNative() || LAB.telemetry.enabled, text: 'Keep measuring on, so Stats and For you fill in', go: 'settings' }
+    ];
+    const left = steps.filter(s => !s.ok);
+    if (!left.length) { LAB.widgets.remove('start'); el.innerHTML = '<div class="muted">All set — this card retires itself.</div>'; return; }
+    el.innerHTML = steps.map(s => `<div class="wcheck" style="cursor:${s.ok ? 'default' : 'pointer'}" ${s.ok ? '' : `data-go="${s.go}"`}><span class="startbox ${s.ok ? 'ok' : ''}">${s.ok ? '✓' : ''}</span><span style="${s.ok ? 'opacity:.55;text-decoration:line-through' : ''}">${LAB.esc(s.text)}</span></div>`).join('')
+      + `<div class="muted">${left.length} to go · tap one to jump there. <a data-hide style="color:var(--a1);cursor:pointer">Hide this card</a></div>`;
+    el.querySelector('[data-hide]').onclick = () => { LAB.widgets.remove('start'); LAB.go('dashboard'); };
+  } });
 
 LAB.widgets.register({ id: 'machine', title: 'This machine', size: 'sm', native: true,
   render(el, ctx) {

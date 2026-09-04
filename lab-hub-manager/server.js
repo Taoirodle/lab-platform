@@ -22,7 +22,7 @@ const conductor = require('./conductor');
 const wizard = require('./wizard');
 const calendar = require('./calendar');
 
-const VERSION = 'M-000024';
+const VERSION = 'M-000025';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
@@ -117,6 +117,17 @@ app.get('/api/identity', (req, res) => res.json({
 }));
 app.get('/api/stats', async (req, res) => res.json(lastStats || await collectStats()));
 app.get('/api/health', (req, res) => res.json({ ok: true, version: VERSION }));
+// the fuller picture for Admin: database, disk on the data volume, age of the last backup
+app.get('/api/health/full', wrap(async (req, res) => {
+  const fs = require('fs');
+  let dbOk = false; try { await db.pool.query('SELECT 1'); dbOk = true; } catch {}
+  let backup = null; try {
+    const dir = '/srv/lab/backups', f = fs.readdirSync(dir).filter(x => /^labbrain-.*\.sql\.gz$/.test(x)).sort().pop();
+    if (f) { const st = fs.statSync(path.join(dir, f)); backup = { file: f, bytes: st.size, age_h: +((Date.now() - st.mtimeMs) / 3600000).toFixed(1) }; }
+  } catch {}
+  const disk = (lastStats && lastStats.disk) || null;
+  res.json({ ok: dbOk, version: VERSION, db: dbOk, uptime_s: Math.round(process.uptime()), disk, backup, ws_clients: wss ? wss.clients.size : 0 });
+}));
 
 // ---- SQL Brain ----
 app.get('/api/db/health', wrap(async (req, res) => {
@@ -636,10 +647,21 @@ app.post('/api/accounts', wrap(async (req, res) => {
   db.audit(name, 'account.create', { id: a.id });
   res.json(a);
 }));
+// PINs are short, so guessing must be slow: 10 wrong tries per address per 15 minutes.
+const pinFails = new Map();
+function pinGuard(req, res) {
+  const ip = req.ip || req.socket.remoteAddress || '?', now = Date.now();
+  const rec = pinFails.get(ip) || { n: 0, until: 0, first: now };
+  if (rec.until > now) { res.set('Retry-After', String(Math.ceil((rec.until - now) / 1000))); res.status(429).json({ error: `Too many wrong PINs — try again in ${Math.ceil((rec.until - now) / 60000)} min.` }); return null; }
+  if (now - rec.first > 15 * 60000) { rec.n = 0; rec.first = now; }
+  return { fail() { rec.n++; if (rec.n >= 10) { rec.until = now + 15 * 60000; db.audit('security', 'pin.lockout', { ip }); } pinFails.set(ip, rec); }, ok() { pinFails.delete(ip); } };
+}
+setInterval(() => { const t = Date.now(); for (const [k, v] of pinFails) if (v.until < t && t - v.first > 15 * 60000) pinFails.delete(k); }, 5 * 60000);
 app.post('/api/accounts/login', wrap(async (req, res) => {
+  const g = pinGuard(req, res); if (!g) return;
   const a = await db.accounts.login(String((req.body && req.body.name) || ''), String((req.body && req.body.pin) || ''));
-  if (!a) return res.status(401).json({ error: 'Wrong name or PIN.' });
-  res.json(a);
+  if (!a) { g.fail(); return res.status(401).json({ error: 'Wrong name or PIN.' }); }
+  g.ok(); res.json(a);
 }));
 // Profile: public shape, PIN-confirmed edits, linked devices
 app.get('/api/accounts/:id', wrap(async (req, res) => {
@@ -653,7 +675,9 @@ app.get('/api/accounts/:id/devices', wrap(async (req, res) => {
 }));
 app.patch('/api/accounts/:id', wrap(async (req, res) => {
   const id = Number(req.params.id), b = req.body || {};
-  if (!(await db.accounts.checkPin(id, String(b.pin || '')))) return res.status(401).json({ error: 'Confirm with your PIN.' });
+  const g = pinGuard(req, res); if (!g) return;
+  if (!(await db.accounts.checkPin(id, String(b.pin || '')))) { g.fail(); return res.status(401).json({ error: 'Confirm with your PIN.' }); }
+  g.ok();
   const avatar = b.avatar && typeof b.avatar === 'object'
     ? { emoji: String(b.avatar.emoji || '').slice(0, 8), color: /^#[0-9a-f]{6}$/i.test(b.avatar.color || '') ? b.avatar.color : '#9a86ff' } : null;
   const privacy = b.privacy && typeof b.privacy === 'object' ? { share_stats: !!b.privacy.share_stats, share_calendar: !!b.privacy.share_calendar } : null;

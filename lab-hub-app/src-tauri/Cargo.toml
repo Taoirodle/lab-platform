@@ -1,6 +1,6 @@
 [package]
 name = "lab-hub"
-version = "0.2.4"
+version = "0.2.5"
 description = "L.A.B Hub — the personal, modular home platform app"
 authors = ["Volkwyn L.A.B"]
 edition = "2021"

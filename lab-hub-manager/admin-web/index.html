@@ -243,6 +243,8 @@
     <div>
       <div class="lbl">Fleet</div>
       <div class="card" id="fleet"><div class="empty">Loading…</div></div>
+      <div class="lbl">Health</div>
+      <div class="card" id="health"><div class="empty">Loading…</div></div>
       <div class="lbl">Hub app · devices</div>
       <div class="card" id="hubdev"><div class="empty">Loading…</div></div>
       <div class="lbl">Builders · generations</div>
@@ -438,6 +440,18 @@
     $('gens').querySelectorAll('[data-gen]').forEach(b=>b.onclick=async()=>{ await fetch(`/api/generations/${b.dataset.gen}/${b.dataset.d}`,{method:'POST'}); loadGens(); });
     $('gens').querySelectorAll('[data-make]').forEach(b=>b.onclick=async()=>{ genBusy=true; b.textContent='Working…'; try{ await fetch('/api/generations/'+b.dataset.make,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); }catch{} genBusy=false; loadGens(); });
   }
+  async function loadHealth(){
+    const h = await api('/api/health/full').catch(()=>null);
+    if(!h){ $('health').innerHTML='<div class="empty" style="color:#c0392b">Manager not answering.</div>'; return; }
+    const pill=(ok,txt)=>`<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 10px;border:1px solid var(--line);border-radius:2px;margin:0 8px 8px 0"><i style="width:7px;height:7px;display:inline-block;background:${ok===true?'var(--steel)':ok===false?'#c0392b':'#d9a520'}"></i>${txt}</span>`;
+    const lab=h.disk&&h.disk.lab&&h.disk.lab.size?h.disk.lab:(h.disk&&h.disk.root);
+    const bk=h.backup;
+    $('health').innerHTML = pill(h.db,'database '+(h.db?'ok':'down'))
+      + pill(lab?lab.pct<90:null, lab?('data disk '+lab.pct+'% used'):'disk —')
+      + pill(bk?bk.age_h<30:false, bk?('backup '+(bk.age_h<1?'<1 h':Math.round(bk.age_h)+' h')+' ago · '+Math.round(bk.bytes/1024)+' KB'):'no backup yet')
+      + pill(true,'manager up '+Math.round(h.uptime_s/3600)+' h · '+h.ws_clients+' live screen'+(h.ws_clients===1?'':'s'))
+      + pill(true,h.version);
+  }
   async function loadFamily(){
     const list = await api('/api/accounts').catch(()=>[]);
     $('family').innerHTML = (list.length ? list.map(a=>`<div class="dev"><div><b>${esc(a.name)}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(a.role||'member')} · since ${new Date(a.created_at).toLocaleDateString()}</span></div><span style="font-size:18px">${a.avatar&&a.avatar.emoji?esc(a.avatar.emoji):''}</span></div>`).join('') : '<div class="empty">No accounts yet.</div>')
@@ -460,6 +474,7 @@
     loadGens(); setInterval(loadGens, 60000);
     loadAudit(); setInterval(loadAudit, 20000);
     loadFamily();
+    loadHealth(); setInterval(loadHealth, 30000);
     setInterval(()=>{ loadApprovals(); loadFleet(); }, 5000);
     setInterval(loadHubDevices, 30000);
     setInterval(()=>{ loadAnalytics(false); }, 20000);
