@@ -256,6 +256,11 @@ html.fx-dense .phead h1{font-size:22px}
 .pitem.on{background:var(--panel2)}
 .pitem.answer{display:block;line-height:1.5;cursor:default}
 .pitem.muted{color:var(--txt2);cursor:default}
+/* list chips */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.chip{border:1px solid var(--stroke);background:var(--panel);color:var(--txt2);border-radius:999px;padding:5px 11px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.chip b{color:var(--a2);font-weight:800;margin-left:2px}
+.chip.on{background:var(--panel2);color:var(--txt);border-color:var(--a1)}
 /* toast */
 .toast{position:fixed;right:22px;bottom:22px;background:var(--panel2);border:1px solid var(--stroke);color:var(--txt);border-radius:12px;padding:10px 14px;font-size:13px;box-shadow:0 12px 30px rgba(0,0,0,.35);opacity:0;transform:translateY(8px);transition:opacity .2s,transform .2s;pointer-events:none;z-index:40;max-width:60vw}
 .toast.on{opacity:1;transform:none}

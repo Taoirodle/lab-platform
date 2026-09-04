@@ -194,11 +194,21 @@ app.post('/api/kiosk/rooms/:id/toggle', wrap(async (req, res) => {
 }));
 
 // ---- Web-facing Hub: the SHARED family surface (global to everyone) ----
-app.get('/api/shared/todos', wrap(async (req, res) => res.json(await db.pool.query('SELECT id,text,done,by_name,created_at FROM shared_todos ORDER BY done, created_at DESC LIMIT 200').then(r => r.rows))));
+// Lists: every to-do belongs to one (Family by default); ?list= filters, GET /api/shared/lists counts them.
+const listName = v => { const s = String(v || '').trim().replace(/\s+/g, ' ').slice(0, 30); return s ? s[0].toUpperCase() + s.slice(1) : 'Family'; };
+app.get('/api/shared/todos', wrap(async (req, res) => {
+  const list = req.query.list ? listName(req.query.list) : null;
+  res.json(await db.pool.query(`SELECT id,text,done,by_name,list,created_at FROM shared_todos ${list ? 'WHERE list=$1' : ''} ORDER BY done, created_at DESC LIMIT 300`, list ? [list] : []).then(r => r.rows));
+}));
+app.get('/api/shared/lists', wrap(async (req, res) => {
+  const rows = await db.pool.query(`SELECT list, count(*) FILTER (WHERE NOT done)::int AS open, count(*)::int AS total FROM shared_todos GROUP BY list ORDER BY (list='Family') DESC, list`).then(r => r.rows);
+  if (!rows.some(r => r.list === 'Family')) rows.unshift({ list: 'Family', open: 0, total: 0 });
+  res.json(rows);
+}));
 app.post('/api/shared/todos', wrap(async (req, res) => {
   const text = String((req.body && req.body.text) || '').trim().slice(0, 300);
   if (!text) return res.status(400).json({ error: 'text required' });
-  const r = await db.pool.query('INSERT INTO shared_todos(text,by_name) VALUES($1,$2) RETURNING id,text,done,by_name', [text, String((req.body && req.body.by) || '').slice(0, 40) || null]);
+  const r = await db.pool.query('INSERT INTO shared_todos(text,by_name,list) VALUES($1,$2,$3) RETURNING id,text,done,by_name,list', [text, String((req.body && req.body.by) || '').slice(0, 40) || null, listName(req.body && req.body.list)]);
   res.json(r.rows[0]);
 }));
 app.post('/api/shared/todos/:id/toggle', wrap(async (req, res) => res.json((await db.pool.query('UPDATE shared_todos SET done=NOT done WHERE id=$1 RETURNING id,done', [req.params.id])).rows[0] || {})));
@@ -424,8 +434,9 @@ async function runSauceAction(a) {
       return `turned ${a.on ? 'on' : 'off'} the ${e.name}`;
     }
     if (a.tool === 'todo' && a.text) {
-      await db.pool.query('INSERT INTO shared_todos(text,by_name) VALUES($1,$2)', [String(a.text).slice(0, 300), 'The Sauce']);
-      return `added "${String(a.text).slice(0, 60)}" to the list`;
+      const list = listName(a.list);
+      await db.pool.query('INSERT INTO shared_todos(text,by_name,list) VALUES($1,$2,$3)', [String(a.text).slice(0, 300), 'The Sauce', list]);
+      return `added "${String(a.text).slice(0, 60)}" to ${list === 'Family' ? 'the list' : list}`;
     }
     if (a.tool === 'device' && a.name) {
       const ents = await conductor.listEntities(), q = String(a.name).toLowerCase();
@@ -463,7 +474,7 @@ app.post('/api/sauce/ask', wrap(async (req, res) => {
     const [rooms, scenes, events, todos, ents] = await Promise.all([
       roomsView().catch(() => []), conductor.listScenes().catch(() => []),
       calendar.events({ account_id: b.account_id ? Number(b.account_id) : null, from: today, to: tomorrow }).catch(() => []),
-      db.pool.query('SELECT text FROM shared_todos WHERE NOT done ORDER BY created_at DESC LIMIT 12').then(r => r.rows).catch(() => []),
+      db.pool.query('SELECT text, list FROM shared_todos WHERE NOT done ORDER BY list, created_at DESC LIMIT 16').then(r => r.rows).catch(() => []),
       conductor.listEntities().catch(() => [])
     ]);
     const devices = ents.filter(e => e.kind === 'light' || e.kind === 'led-strip' || e.kind === 'switch').map(e => ({ name: e.name, room: e.room, on: !!(e.state && e.state.on) }));

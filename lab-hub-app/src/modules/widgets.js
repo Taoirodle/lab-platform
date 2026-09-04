@@ -78,15 +78,21 @@ LAB.widgets.register({ id: 'usage', title: 'Today so far', size: 'sm', native: t
     link(el, 'Open stats', 'stats');
   } });
 
-LAB.widgets.register({ id: 'todos', title: 'Family to-do', size: 'md',
+LAB.widgets.register({ id: 'todos', title: 'Lists', size: 'md',
   async render(el, ctx) {
+    let cur = LAB.store.get('todo_list') || 'Family';
     const paint = async () => {
-      let t = []; try { t = await LAB.api('/api/shared/todos'); } catch {}
-      const open = t.filter(x => !x.done).slice(0, 7), done = t.filter(x => x.done).length;
-      el.innerHTML = (open.length ? open.map(x => `<label class="wcheck"><input type="checkbox" data-id="${x.id}"><span>${LAB.esc(x.text)}${x.by_name ? ` <em>· ${LAB.esc(x.by_name)}</em>` : ''}</span></label>`).join('') : '<div class="muted">All clear.</div>')
-        + `<form class="wadd"><input placeholder="Add something for the family…" maxlength="300"><button class="btn pri">Add</button></form>` + (done ? `<div class="muted">${done} done</div>` : '');
+      let lists = [], t = [];
+      try { [lists, t] = await Promise.all([LAB.api('/api/shared/lists'), LAB.api('/api/shared/todos?list=' + encodeURIComponent(cur))]); } catch {}
+      if (!lists.some(l => l.list === cur)) lists.push({ list: cur, open: 0, total: 0 });
+      const open = t.filter(x => !x.done).slice(0, 8), done = t.filter(x => x.done).length;
+      el.innerHTML = `<div class="chips">${lists.map(l => `<button class="chip ${l.list === cur ? 'on' : ''}" data-list="${LAB.esc(l.list)}">${LAB.esc(l.list)}${l.open ? ` <b>${l.open}</b>` : ''}</button>`).join('')}<button class="chip" data-newlist title="New list">+</button></div>`
+        + (open.length ? open.map(x => `<label class="wcheck"><input type="checkbox" data-id="${x.id}"><span>${LAB.esc(x.text)}${x.by_name ? ` <em>· ${LAB.esc(x.by_name)}</em>` : ''}</span></label>`).join('') : '<div class="muted">All clear.</div>')
+        + `<form class="wadd"><input placeholder="Add to ${LAB.esc(cur)}…" maxlength="300"><button class="btn pri">Add</button></form>` + (done ? `<div class="muted">${done} done</div>` : '');
+      el.querySelectorAll('[data-list]').forEach(b => b.onclick = () => { cur = b.dataset.list; LAB.store.set('todo_list', cur); paint(); });
+      el.querySelector('[data-newlist]').onclick = () => { const n = prompt('Name the new list (e.g. Groceries, Chores, Holiday)'); if (n && n.trim()) { cur = n.trim().slice(0, 30); cur = cur[0].toUpperCase() + cur.slice(1); LAB.store.set('todo_list', cur); paint(); } };
       el.querySelectorAll('input[type=checkbox]').forEach(c => c.onchange = async () => { await post('/api/shared/todos/' + c.dataset.id + '/toggle').catch(() => {}); paint(); });
-      el.querySelector('form').onsubmit = async e => { e.preventDefault(); const v = e.target.querySelector('input').value.trim(); if (!v) return; await post('/api/shared/todos', { text: v, by: ctx.me && ctx.me.name }).catch(() => {}); paint(); };
+      el.querySelector('form').onsubmit = async e => { e.preventDefault(); const v = e.target.querySelector('input').value.trim(); if (!v) return; await post('/api/shared/todos', { text: v, by: ctx.me && ctx.me.name, list: cur }).catch(() => {}); paint(); };
     };
     await paint();
   } });

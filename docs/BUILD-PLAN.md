@@ -108,7 +108,14 @@
 - [x] Time-based automations: Conductor clock (house tz, once per minute, never twice a minute), `{type:'time', at, days}` validated; enable/disable + delete routes; builder offers "the clock says…" with day chips. **Verified live:** automation created for the next minute fired at 18:23:15 exactly (audit `fired` → scene → lamp on).
 - [x] The Sauce controls devices by name (`device` tool, name/room match) with devices in its context. Verified: "switch off the smoke lamp" → did it.
 - [x] Change toasts: broadcasts carry `by`; the app toasts "Mom changed the family list" for other people's changes (verified in-browser).
-- [ ] Lists: `shared_todos.list` (default "Family"); dashboard widget + web hub get a list switcher (Groceries, Chores…); The Sauce's `todo` action accepts a list.
+- [x] Lists: `shared_todos.list` (normalised, default Family), `GET /api/shared/lists` (open counts), `?list=` filter; dashboard "Lists" widget + web hub list chips with "+" for a new list; The Sauce's `todo` takes a list and its context shows `[Groceries] …`. Verified: "add oat milk to the groceries" → landed on Groceries.
+
+### 16 · Wave seven (pick top-down)
+- [ ] Kiosk: a Lists panel (Groceries first if it exists) with touch-to-tick and add.
+- [ ] Admin: invite a family member — creates the account with a one-time PIN shown once; the person logs in and changes it (Profile). Accounts list with roles in Admin.
+- [ ] Stats: "vs last week" deltas on the KPI tiles (summary returns the previous 7 days too).
+- [ ] Web hub on a phone: check the layout at 375 px in the browser pane, fix what wraps badly (brother reaches it over Tailscale on a phone).
+- [ ] `docs/13-hub-app.md` refresh for waves 12–15 (home/away, offline cache, live updates, palette, lists, time automations).
 
 ---
 

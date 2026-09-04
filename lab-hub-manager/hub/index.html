@@ -164,7 +164,8 @@
         <div id="sq-out" style="font-size:14px;line-height:1.55;margin-top:10px;color:var(--txt2)">It knows the family calendar, the list and the house — and only acts when you ask.</div>
       </div>
       <div class="card">
-        <h3>Shared to-do <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">everyone sees this</span></h3>
+        <h3>Lists <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">everyone sees these</span></h3>
+        <div id="td-lists" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
         <div class="row"><input type="text" id="td-in" placeholder="Add something for the family…"><button class="btn pri" id="td-add">Add</button></div>
         <div class="list" id="td-list"></div>
       </div>
@@ -280,8 +281,14 @@
   function tick(){ const d=new Date(); $('clock').textContent=d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
 
   // ---- shared to-do ----
+  let curList=store.get('todo_list')||'Family';
+  const chipCss='border:1px solid var(--stroke);background:var(--panel);color:var(--txt2);border-radius:999px;padding:5px 11px;font:inherit;font-size:12px;font-weight:600;cursor:pointer';
   async function loadTodos(){
-    const list=await api('/api/shared/todos').catch(()=>[]);
+    const [lists,list]=await Promise.all([api('/api/shared/lists').catch(()=>[]),api('/api/shared/todos?list='+encodeURIComponent(curList)).catch(()=>[])]);
+    if(!lists.some(l=>l.list===curList)) lists.push({list:curList,open:0,total:0});
+    $('td-lists').innerHTML=lists.map(l=>`<button data-list="${esc(l.list)}" style="${chipCss}${l.list===curList?';background:var(--panel2);color:var(--txt);border-color:var(--a1)':''}">${esc(l.list)}${l.open?` <b style="color:var(--a2)">${l.open}</b>`:''}</button>`).join('')+`<button data-newlist style="${chipCss}" title="New list">+</button>`;
+    $('td-lists').querySelectorAll('[data-list]').forEach(b=>b.onclick=()=>{ curList=b.dataset.list; store.set('todo_list',curList); $('td-in').placeholder='Add to '+curList+'…'; loadTodos(); });
+    $('td-lists').querySelector('[data-newlist]').onclick=()=>{ const n=prompt('Name the new list (e.g. Groceries, Chores, Holiday)'); if(n&&n.trim()){ curList=n.trim().slice(0,30); curList=curList[0].toUpperCase()+curList.slice(1); store.set('todo_list',curList); loadTodos(); } };
     $('td-list').innerHTML=list.length?list.map(t=>`<div class="item ${t.done?'done':''}" data-id="${t.id}">
       <div class="chk ${t.done?'done':''}" data-act="toggle">${t.done?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5 11-11"/></svg>':''}</div>
       <div class="t">${esc(t.text)}</div>${t.by_name?`<div class="who">${esc(t.by_name)}</div>`:''}<div class="del" data-act="del">×</div></div>`).join(''):'<div class="empty">Nothing yet — add the first family to-do.</div>';
@@ -291,7 +298,7 @@
     });
   }
   async function addTodo(){ const t=$('td-in').value.trim(); if(!t)return; $('td-in').value='';
-    await api('/api/shared/todos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,by:me&&me.name})}); loadTodos(); }
+    await api('/api/shared/todos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,by:me&&me.name,list:curList})}); loadTodos(); }
   $('td-add').onclick=addTodo; $('td-in').addEventListener('keydown',e=>{if(e.key==='Enter')addTodo();});
 
   // ---- shared calendar ----

@@ -36,7 +36,7 @@ const PERSONA =
 
 function toolDoc(house) {
   const ev = (house.events || []).slice(0, 14).map(e => `${e.day}${e.at_time ? ' ' + e.at_time : ''} ${e.title}${e.source === 'family' ? '' : ' (' + (e.feed || 'linked') + ')'}`).join('; ');
-  const todos = (house.todos || []).slice(0, 12).map(t => t.text).join('; ');
+  const todos = (house.todos || []).slice(0, 16).map(t => (t.list && t.list !== 'Family' ? '[' + t.list + '] ' : '') + t.text).join('; ');
   return `You can ACT on the home. Only act on what the person actually asked for.
 Available scenes: ${(house.scenes || []).map(s => s.name).join(', ') || '(none)'}
 Rooms: ${(house.rooms || []).map(r => `${r.id} (${r.on ? 'on' : 'off'})`).join(', ') || '(none)'}
@@ -48,7 +48,7 @@ Actions you may emit in "actions":
 - {"tool":"scene","name":"<scene>"}            run a saved scene (e.g. movie-night, all-off)
 - {"tool":"light","room":"<room id>","on":true|false}   switch one room's lights
 - {"tool":"device","name":"<device name>","on":true|false}   switch one named device (strip, lamp, plug)
-- {"tool":"todo","text":"<short>"}             add to the shared family to-do
+- {"tool":"todo","text":"<short>","list":"Family|Groceries|Chores|<other>" optional}   add to a shared list (Groceries for food/shopping, Chores for housework)
 - {"tool":"todo_done","text":"<words from an open to-do>"}   tick an open to-do off
 - {"tool":"event","title":"<short>","day":"YYYY-MM-DD","time":"HH:MM" optional}  add to the shared family calendar
 

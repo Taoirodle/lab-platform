@@ -194,6 +194,7 @@ CREATE TABLE IF NOT EXISTS shared_todos (
   by_name TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE shared_todos ADD COLUMN IF NOT EXISTS list TEXT NOT NULL DEFAULT 'Family';   -- Family | Groceries | Chores | …
 CREATE TABLE IF NOT EXISTS shared_events (
   id BIGSERIAL PRIMARY KEY,
   title TEXT NOT NULL,
