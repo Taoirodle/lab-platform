@@ -73,9 +73,9 @@
 ### 11 · Next wave (pick top-down)
 - [x] The Sauce knows the calendar + list (today/tomorrow merged events + open to-dos in context, local time), new `todo_done` action (best-match tick), timed `event`s. Verified live: answered "just one thing left…", ticked it off, "tomorrow's wide open".
 - [x] Family calendar export `GET /api/calendar/family.ics` (family events + shared feeds, folded, DST-safe) — round-trips through our own parser. Subscribe card in the app Calendar; URL shown on the web hub.
-- [ ] Admin: generations desk — list staged/published skins/widgets/pages with publish/reject + "Generate now" buttons; shows the sanitiser's dropped-items count.
-- [ ] Web hub "Get the App": show version + notes from `/api/app/version`; Mac button passes arch.
-- [ ] Kiosk: "This week" + "Coming up" from the merged endpoints.
+- [x] Admin "Builders · generations" desk: waiting-for-you list (publish / reject / restore), recent, published counts, Skin/Widget/Page "now" buttons.
+- [x] Web hub "Get the App": Download badge shows the version; the install modal shows version, date and notes.
+- [x] Kiosk: "Coming up · next 7 days" (merged calendar) + "This week · who's sharing" panels.
 - [ ] Stats: click a day → that day's timeline (runs of app/kind) from a new `/api/usage/day?device_id&date&tz`.
 - [ ] Windows wizard: after download, offer to launch the installer.
 - [ ] Sauce quick-ask widget history (last 3 exchanges) persisted per install.

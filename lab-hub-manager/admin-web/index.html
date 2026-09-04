@@ -240,6 +240,8 @@
       <div class="card" id="fleet"><div class="empty">Loading…</div></div>
       <div class="lbl">Hub app · devices</div>
       <div class="card" id="hubdev"><div class="empty">Loading…</div></div>
+      <div class="lbl">Builders · generations</div>
+      <div class="card" id="gens"><div class="empty">Loading…</div></div>
     </div>
   </div>
 </main>
@@ -408,11 +410,29 @@
       <div class="dev"><div><b>${esc(d.name||d.id.slice(0,8))}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(d.os||'—')} · ${d.account?esc(d.account):'not signed in'} · seen ${ago(d.last_seen)}</span></div>
       <span style="font-size:12px;color:var(--ink2)">${hm(d.active_7d||0)} active / 7d</span></div>`).join('') : '<div class="empty">No app installs have reported yet.</div>';
   }
+  // the builders' desk: what the AI team made (skins / widgets / pages), publish or reject, or ask for one now
+  let genBusy = false;
+  async function loadGens(){
+    const list = await api('/api/generations').catch(()=>[]);
+    const staged = list.filter(g=>g.status==='staged'), pub = list.filter(g=>g.status==='published');
+    const count = k => pub.filter(g=>g.kind===k).length;
+    const row = g => `<div class="dev"><div><b>${esc(g.title||g.name)}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(g.kind)} · ${esc(g.agent||'')} · ${new Date(g.created_at).toLocaleDateString()}${g.tested?'':' · <i>failed validation</i>'}</span>${g.summary?`<div style="font-size:12px;color:var(--ink2)">${esc(g.summary)}</div>`:''}</div>
+      <span style="display:flex;gap:10px;font-size:11px;letter-spacing:1px;text-transform:uppercase">${g.status==='staged'?`<span data-gen="${g.id}" data-d="publish" style="cursor:pointer;color:var(--steel)">Publish</span>`:''}<span data-gen="${g.id}" data-d="${g.status==='rejected'?'stage':'reject'}" style="cursor:pointer;color:var(--ink3)">${g.status==='rejected'?'Restore':'Reject'}</span></span></div>`;
+    $('gens').innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+        <span style="font-size:12px;color:var(--ink2)">Published: ${count('skin')} skins · ${count('widget')} widgets · ${count('page')} pages</span>
+        <span style="flex:1"></span>
+        <button class="btn ghost" data-make="skin" ${genBusy?'disabled':''}>Skin now</button><button class="btn ghost" data-make="widget" ${genBusy?'disabled':''}>Widget now</button><button class="btn ghost" data-make="page" ${genBusy?'disabled':''}>Page now</button></div>`
+      + (staged.length ? `<div class="lbl" style="margin:6px 0">Waiting for you</div>` + staged.map(row).join('') : '')
+      + `<div class="lbl" style="margin:12px 0 6px">Recent</div>` + (list.filter(g=>g.status!=='staged').slice(0,8).map(row).join('') || '<div class="empty">Nothing generated yet.</div>');
+    $('gens').querySelectorAll('[data-gen]').forEach(b=>b.onclick=async()=>{ await fetch(`/api/generations/${b.dataset.gen}/${b.dataset.d}`,{method:'POST'}); loadGens(); });
+    $('gens').querySelectorAll('[data-make]').forEach(b=>b.onclick=async()=>{ genBusy=true; b.textContent='Working…'; try{ await fetch('/api/generations/'+b.dataset.make,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); }catch{} genBusy=false; loadGens(); });
+  }
   function startPortal(){
     boot = LabLoader.overlay({ label: 'L.A.B Admin' });
     connect();
     initNeural();
     loadHubDevices();
+    loadGens(); setInterval(loadGens, 60000);
     setInterval(()=>{ loadApprovals(); loadFleet(); }, 5000);
     setInterval(loadHubDevices, 30000);
     setInterval(()=>{ loadAnalytics(false); }, 20000);

@@ -328,11 +328,13 @@
     mac:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.3 12.9c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.8-3-.8c-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7 2-1.1 2.8-2.2c.9-1.3 1.2-2.5 1.3-2.6-.1 0-2.5-1-2.5-3.8zM14 5.9c.7-.8 1.1-2 1-3.1-1 0-2.1.7-2.8 1.5-.6.7-1.1 1.8-1 2.9 1.1.1 2.2-.5 2.8-1.3z"/></svg>`,
     linux:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c-2 0-3 1.8-3 4 0 1.3.3 2 .3 3.2 0 1-1.8 2.4-2.6 4.3-.8 1.9-1.7 3.7-1.2 4.6.5.8 1.6.3 2.6.9.9.6 1.9 1.4 3.9 1.4s3-.8 3.9-1.4c1-.6 2.1-.1 2.6-.9.5-.9-.4-2.7-1.2-4.6-.8-1.9-2.6-3.3-2.6-4.3 0-1.2.3-1.9.3-3.2 0-2.2-1-4-3-4zm-1.4 5.2c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9zm2.8 0c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9z"/></svg>`
   };
+  let appVer=null;
   async function loadTargets(){
-    const targets=await api('/api/app/targets').catch(()=>[]);
+    const [targets,ver]=await Promise.all([api('/api/app/targets').catch(()=>[]),api('/api/app/version').catch(()=>null)]);
+    appVer=ver&&ver.version?ver:null;
     $('oschoice').innerHTML=targets.map(t=>`<div class="os" data-os="${t.os}"><div>${OS_ICON[t.os]||''}</div>
       <div class="n">${esc(t.label)}</div><div class="a">${t.os==='win'?'Windows 10 / 11 · x64':t.os==='mac'?'macOS · Apple silicon + Intel':'AppImage · .deb'}</div>
-      <div class="badge ${t.build?'':'soon'}">${t.build?'Download':'Get the wizard'}</div></div>`).join('');
+      <div class="badge ${t.build?'':'soon'}">${t.build?'Download'+(appVer?' v'+esc(appVer.version):''):'Get the wizard'}</div></div>`).join('');
     $('oschoice').querySelectorAll('.os').forEach(el=>el.onclick=()=>openWizard(el.dataset.os, targets.find(t=>t.os===el.dataset.os)));
   }
   function openWizard(os, t){
@@ -341,6 +343,7 @@
     $('wzbody').innerHTML=`<span class="x" onclick="document.getElementById('wz').classList.remove('on')">✕</span>
       <h2>Install L.A.B for ${esc(label)}</h2>
       <p>${hasBuild?'Your native app is ready. Download it, run it, and sign in — it personalises itself to this machine on first launch.':'The native build for '+esc(label)+' is compiled in CI (one clean binary per OS). Meanwhile, grab the setup wizard — it creates your account, analyses how you use this PC, and hands the report to your L.A.B agents so your app is ready the moment it lands.'}</p>
+      ${hasBuild&&appVer?`<p style="color:var(--txt2);font-size:13px"><b>v${esc(appVer.version)}</b>${appVer.published_at?' · '+new Date(appVer.published_at).toLocaleDateString():''}${appVer.notes?' — '+esc(appVer.notes):''}</p>`:''}
       ${hasBuild?`<a class="btn pri" style="display:inline-block" href="/app/download/${os}">Download the app</a>`:`
         <a class="btn pri" style="display:inline-block" href="/app/wizard/${os}">Download setup wizard</a>
         <div class="cmd" id="wz-cmd"></div>`}`;

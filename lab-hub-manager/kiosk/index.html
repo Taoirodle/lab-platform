@@ -64,6 +64,27 @@
 
   <div class="strip" id="strip"></div>
 
+  <style>
+    .panels{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:18px 28px 28px}
+    @media (max-width:820px){.panels{grid-template-columns:1fr}}
+    .panel{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:18px 20px}
+    .panel .h-lbl{margin:0 0 10px}
+    .kev{display:flex;gap:14px;align-items:baseline;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:17px}
+    .kev:last-child{border-bottom:0}
+    .kev .d{font-family:"Cascadia Code",Consolas,monospace;font-size:13px;opacity:.65;min-width:96px}
+    .kev i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:8px;vertical-align:1px}
+    .kmem{display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)}
+    .kmem:last-child{border-bottom:0}
+    .kmem .av{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-size:20px;flex:none}
+    .kmem .bar{display:flex;height:7px;border-radius:4px;overflow:hidden;background:rgba(255,255,255,.07);margin-top:6px}
+    .kmem .bar i{display:block;height:100%}
+    .kempty{opacity:.55;font-size:15px;padding:6px 0}
+  </style>
+  <div class="panels">
+    <div class="panel"><div class="h-lbl">Coming up · next 7 days</div><div id="k-up"><div class="kempty">…</div></div></div>
+    <div class="panel"><div class="h-lbl">This week · who's sharing</div><div id="k-week"><div class="kempty">…</div></div></div>
+  </div>
+
 <script>
   const $=id=>document.getElementById(id);
   const api=(p,opts)=>fetch(p,opts).then(r=>r.json());
@@ -113,8 +134,21 @@
     }catch(e){ $('node').textContent='offline'; $('dot').style.background='#c0392b'; }
   }
 
+  // the family surface: the merged calendar (family + shared feeds) and who chose to share their week
+  const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const KC={Gaming:'#ff9e6b',Work:'#9a86ff',Creativity:'#ffcf6f',Browsing:'#6fb4ff',Comms:'#7ee2b8',Entertainment:'#ff7bb0',Other:'#98a1ba'};
+  const hm=m=>m>=60?Math.floor(m/60)+'h '+String(m%60).padStart(2,'0')+'m':m+'m';
+  async function refreshFamily(){
+    const today=new Date().toLocaleDateString('en-CA'), to=new Date(Date.now()+7*86400000).toLocaleDateString('en-CA'), tomorrow=new Date(Date.now()+86400000).toLocaleDateString('en-CA');
+    const ev=await api(`/api/calendar/events?from=${today}&to=${to}`).catch(()=>[]);
+    $('k-up').innerHTML=ev.length?ev.slice(0,7).map(e=>`<div class="kev"><span class="d">${e.day===today?'Today':e.day===tomorrow?'Tomorrow':new Date(e.day+'T12:00').toLocaleDateString(undefined,{weekday:'short',day:'numeric'})}${e.at_time?' '+esc(e.at_time):''}</span><span><i style="background:${esc(e.color||'#ff9e6b')}"></i>${esc(e.title)}</span></div>`).join(''):'<div class="kempty">Nothing on for the week.</div>';
+    const fam=await api('/api/family/stats').catch(()=>[]);
+    $('k-week').innerHTML=fam.length?fam.map(m=>{const av=m.avatar||{};const cats=Object.entries(m.cats).sort((a,b)=>b[1]-a[1]);return `<div class="kmem"><div class="av" style="background:${esc(av.color||'#9a86ff')}">${esc(av.emoji||'🙂')}</div><div style="flex:1;min-width:0"><div>${esc(m.name)} <span style="opacity:.6">· ${hm(m.total)}</span></div><div class="bar">${cats.map(([k,v])=>`<i style="width:${(100*v/m.total).toFixed(1)}%;background:${KC[k]||KC.Other}"></i>`).join('')}</div></div></div>`;}).join(''):'<div class="kempty">Nobody is sharing yet — Profile → "What the family can see" in the app.</div>';
+  }
+
   tick(); setInterval(tick,1000);
   refresh(); setInterval(refresh,10000);
+  refreshFamily(); setInterval(refreshFamily,60000);
 </script>
 </body>
 </html>
