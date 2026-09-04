@@ -66,7 +66,7 @@ const LAB = (window.LAB = {
     if (on) { if (this.where === 'offline') this.where = 'home'; clearInterval(this._recheck); this._recheck = null; this.cacheAge = 0; }
     else if (!this._recheck) {
       this.where = 'offline';
-      this._recheck = setInterval(async () => { const s = await this.pickServer(); if (s.where !== 'offline') { this.ctx.server = s.url; this.where = s.where; this.setOnline(true); this.paintFoot(); if (this.active) this.go(this.active); } }, 45000);
+      this._recheck = setInterval(async () => { const s = await this.pickServer(); if (s.where !== 'offline') { this.ctx.server = s.url; this.where = s.where; this.setOnline(true); this.paintFoot(); if (this.live) this.live.restart(); if (this.active) this.go(this.active); } }, 45000);
     }
     this.paintFoot();
   },

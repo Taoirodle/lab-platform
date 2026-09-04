@@ -39,7 +39,8 @@ mkdir -p "$HOME/.config/lab" && printf '{"id":"%s","account_id":%s,"account_name
 echo "  Checking for your app build..."
 if curl -fsSL "$SERVER/app/download/linux" -o "$HOME/Downloads/L.A.B-Hub.AppImage" 2>/dev/null; then
   chmod +x "$HOME/Downloads/L.A.B-Hub.AppImage" 2>/dev/null
-  echo "  ✓ Downloaded to ~/Downloads — chmod +x and run it."
+  echo "  ✓ Downloaded to ~/Downloads/L.A.B-Hub.AppImage (already executable)."
+  printf "  Run it now? [Y/n] "; read GO; case "$GO" in n|N) ;; *) ( "$HOME/Downloads/L.A.B-Hub.AppImage" >/dev/null 2>&1 & ) ;; esac
 else
   echo "  · The native Linux build isn't published yet. Your profile is saved for when it lands."
 fi

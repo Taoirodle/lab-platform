@@ -176,6 +176,14 @@
         <div class="empty" style="padding-top:12px">On your phone: subscribe to <code id="ics-url" style="user-select:all"></code> in your calendar app (family events + calendars shared here).</div>
       </div>
       <div class="card">
+        <h3>Your calendars <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">Google · Apple · Outlook, by their iCal link</span></h3>
+        <div class="list" id="cf-list"></div>
+        <div class="row" style="margin-top:8px"><input type="text" id="cf-name" placeholder="Name (e.g. Work)" maxlength="60" style="flex:1"><input type="color" id="cf-color" value="#6fb4ff" style="width:44px;height:40px;padding:2px;border:1px solid var(--stroke);border-radius:10px;background:transparent"></div>
+        <div class="row"><input type="text" id="cf-url" placeholder="Paste the iCal / webcal link" style="flex:1"></div>
+        <div class="row" style="align-items:center;gap:10px"><label style="font-size:13px;color:var(--txt2);display:flex;gap:8px;align-items:center"><input type="checkbox" id="cf-shared"> Show it to the whole family</label><span style="flex:1"></span><button class="btn pri" id="cf-add">Link</button></div>
+        <div class="empty" id="cf-msg">Google: Settings → your calendar → "Secret address in iCal format". Apple: iCloud.com → share → Public Calendar. Outlook: Settings → Shared calendars → Publish.</div>
+      </div>
+      <div class="card">
         <h3>This week <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">who chose to share</span></h3>
         <div class="list" id="fam-stats"></div>
       </div>
@@ -301,6 +309,24 @@
   $('ev-add').onclick=async()=>{ const title=$('ev-title').value.trim(),day=$('ev-day').value; if(!title||!day)return;
     $('ev-title').value=''; await api('/api/shared/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,day,by:me&&me.name})}); loadEvents(); };
 
+  // ---- your linked calendars (same feeds as the app) ----
+  async function loadFeeds(){
+    const list=await api('/api/calendar/feeds'+(me?'?account_id='+encodeURIComponent(me.id):'')).catch(()=>[]);
+    $('cf-list').innerHTML=list.length?list.map(f=>`<div class="ev" data-id="${esc(f.id)}"><i style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${esc(f.color||'#6fb4ff')};flex:none"></i>
+      <div style="flex:1"><div class="ttl">${esc(f.name)}${f.shared?' <span style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--a2)">family</span>':''}</div><div class="tm">${f.event_count||0} events · ${f.last_status==='ok'?'synced':esc(f.last_status||'pending')}</div></div>
+      ${(!f.account_id||String(f.account_id)===String(me&&me.id))?'<div class="del" data-act="cfdel">×</div>':''}</div>`).join(''):'<div class="empty">No linked calendars yet.</div>';
+    $('cf-list').querySelectorAll('[data-act=cfdel]').forEach(b=>b.onclick=async()=>{ await api('/api/calendar/feeds/'+b.closest('.ev').dataset.id+(me?'?account_id='+encodeURIComponent(me.id):''),{method:'DELETE'}); loadFeeds(); loadEvents(); });
+  }
+  $('cf-add').onclick=async()=>{
+    const name=$('cf-name').value.trim(), url=$('cf-url').value.trim(); if(!url) return $('cf-url').focus();
+    $('cf-msg').textContent='Reading the calendar…'; $('cf-add').disabled=true;
+    try{ const r=await api('/api/calendar/feeds',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:me&&me.id,name:name||'Calendar',url,color:$('cf-color').value,shared:$('cf-shared').checked})});
+      if(r.error) throw new Error(r.error);
+      $('cf-msg').textContent=`Linked ${r.name} — ${r.events} events.`; $('cf-name').value=''; $('cf-url').value=''; loadFeeds(); loadEvents(); }
+    catch(e){ $('cf-msg').textContent=e.message; }
+    $('cf-add').disabled=false;
+  };
+
   // ---- Ask The Sauce (phones included) ----
   let sqHist=[];
   async function askSauce(){
@@ -401,8 +427,16 @@
     $('s-acct').textContent=me.name;
     tick(); setInterval(tick,1000);
     try{const id=await api('/api/identity'); $('hosted').textContent='hosted by '+id.node; $('s-node').textContent=id.node; $('foot').textContent='L.A.B Hub · shared family surface · from '+id.node;}catch{}
-    loadTodos(); loadEvents(); loadFamilyStats(); loadTargets(); loadSkins();
+    loadTodos(); loadEvents(); loadFamilyStats(); loadFeeds(); loadTargets(); loadSkins();
     $('ics-url').textContent=location.origin+'/api/calendar/family.ics';
+    // live: when anyone changes a shared thing, this page refreshes it at once
+    (function live(){ let ws; try{ ws=new WebSocket(location.origin.replace(/^http/,'ws')+'/ws'); }catch{ return setTimeout(live,10000); }
+      ws.onmessage=e=>{ let m; try{ m=JSON.parse(e.data); }catch{ return; } if(m.type!=='shared') return;
+        const a=document.activeElement; if(a&&a.tagName==='INPUT'&&a.value) return;
+        if(m.what==='todos'||m.what==='sauce') loadTodos();
+        if(m.what==='events'||m.what==='calendar'||m.what==='sauce') loadEvents();
+        if(m.what==='conductor'||m.what==='kiosk'||m.what==='sauce') { if(typeof loadHouse==='function') loadHouse(); } };
+      ws.onclose=()=>setTimeout(live,5000); })();
     setInterval(loadTodos,15000); setInterval(loadEvents,20000);
     api('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:me.id,type:'page',payload:{page:'web-hub'}})}).catch(()=>{});
     if(boot){boot.done();boot=null;}

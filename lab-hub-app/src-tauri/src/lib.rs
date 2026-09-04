@@ -279,6 +279,52 @@ mod win {
     }
 }
 
+#[derive(Serialize)]
+struct LiveDisk {
+    name: String,
+    mount: String,
+    fs: String,
+    total: u64,
+    free: u64,
+    removable: bool,
+}
+
+#[derive(Serialize)]
+struct LiveNet {
+    name: String,
+    mac: String,
+    rx_total: u64,
+    tx_total: u64,
+}
+
+#[derive(Serialize)]
+struct LiveDevice {
+    disks: Vec<LiveDisk>,
+    networks: Vec<LiveNet>,
+}
+
+/// Storage + network interfaces, fresh each call (the Device page polls it).
+#[tauri::command]
+fn live_device() -> LiveDevice {
+    let disks = Disks::new_with_refreshed_list()
+        .iter()
+        .map(|d| LiveDisk {
+            name: d.name().to_string_lossy().to_string(),
+            mount: d.mount_point().to_string_lossy().to_string(),
+            fs: d.file_system().to_string_lossy().to_string(),
+            total: d.total_space(),
+            free: d.available_space(),
+            removable: d.is_removable(),
+        })
+        .collect();
+    let nets = sysinfo::Networks::new_with_refreshed_list();
+    let networks = nets
+        .iter()
+        .map(|(name, n)| LiveNet { name: name.clone(), mac: n.mac_address().to_string(), rx_total: n.total_received(), tx_total: n.total_transmitted() })
+        .collect();
+    LiveDevice { disks, networks }
+}
+
 /// Cheap: CPU + RAM + uptime. Safe to poll every few seconds for a live tile.
 #[tauri::command]
 fn quick_load(state: tauri::State<'_, Telemetry>) -> QuickLoad {
@@ -607,7 +653,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            device_info, server_url, profile_hint, quick_load, usage_snapshot, game_library, recent_files,
+            device_info, server_url, profile_hint, quick_load, usage_snapshot, game_library, recent_files, live_device,
             autostart_enabled, autostart_set, save_to_downloads, close_to_tray_get, close_to_tray_set, notify, hide_window
         ])
         .run(tauri::generate_context!())

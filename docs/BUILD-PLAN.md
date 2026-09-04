@@ -94,13 +94,21 @@
 - [x] `scripts/smoke.sh`: 28 endpoint checks — all pass against the live server.
 - [x] Kiosk: touch-sized "Ask The Sauce" box; refreshes rooms/calendar when it acts.
 - [x] Admin: "Keep usage data for N days" next to the AI controls (wired to `/api/settings/usage`).
-- [ ] Device page: live disks + network interfaces (Rust `sysinfo::Networks`) instead of the static probe only.
+- [x] Device page: Rust `live_device` (disks with mount/fs/free/total, network interfaces with MAC + totals) → storage fill bars + per-interface ↓/↑ rates computed between polls.
 - [x] `docs/14-operations.md`: deploy, logs, backups/restore, usage data, releases, Tailscale steps, builders desk.
+
+### 14 · Wave five (pick top-down)
+- [x] Live updates: one middleware announces every successful change under `/api/(shared|calendar|conductor|kiosk|sauce|store)` as `{type:'shared', what}` on `/ws` (Sauce stays quiet unless it acted); app `modules/live.js` (backoff reconnect, restarts on recovery, won't re-render while you type) and the web hub refresh instantly. Verified with a real WS client: add/toggle/delete → 3 events, plain answer → none.
+- [x] Web hub "Your calendars" card: list (family badge, sync state), remove, link with name/colour/share — phones can link Google/Apple/Outlook without the app.
+- [x] Admin audit trail card (`GET /api/audit`, home-network only), refreshed every 20 s.
+- [x] Stats CSV export (`/api/usage/export.csv`, tz-aware) → saved to Downloads from the app. Verified: real Twizzler minutes in the CSV.
+- [x] Mac/Linux wizards offer to open/run the download.
 
 ---
 
 ## Log
 - 2026-09-04 00:55 — Run started. Cron installed. Plan written. Repo public; CI re-fired on `app-v0.1.0`.
+- 2026-09-04 18:45 — Waves 13+14 shipped (M-000024): backups cron + restore, smoke.sh 28/28, kiosk/hub Sauce, retention control, live WS updates (verified with a real WS client), hub calendar linking, audit trail, CSV export, live_device page. 0.2.3 final build running (then tag). Audit log shows Tao using the new Admin desk at 16:15.
 - 2026-09-04 17:40 — Wave 12 built + verified in-browser (home/away/offline, device onboarding, palette; server retention purge, hub Sauce card). Build for 0.2.3 in progress.
 - 2026-09-04 16:58 — **0.2.2 released** (day timeline, family.ics subscribe card, Sauce widget history; web: admin builders desk, hub version, kiosk panels; wizard launches installer). Browser pass clean on all 10 pages; exe verified; installer + version.json published; tag `app-v0.2.2`. Wave 11 complete; wave 12 defined. (Turn gap 11:00→16:54: cron fires queued while the previous turn ran.)
 - 2026-09-04 10:40 — Wave 11: Sauce context + todo_done + family.ics shipped and verified live (M-000023). CI found blocked at account level (zero-step jobs) — needs Tao.

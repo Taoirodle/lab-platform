@@ -38,6 +38,7 @@ mkdir -p "$HOME/Library/Application Support/LAB" && printf '{"id":"%s","account_
 echo "  Checking for your app build..."
 if curl -fsSL "$SERVER/app/download/mac?arch=$(uname -m)" -o "$HOME/Downloads/L.A.B-Hub.dmg" 2>/dev/null; then
   echo "  ✓ Downloaded to ~/Downloads/L.A.B-Hub.dmg — open it and drag L.A.B Hub to Applications."
+  printf "  Open it now? [Y/n] "; read GO; case "$GO" in n|N) ;; *) open "$HOME/Downloads/L.A.B-Hub.dmg" ;; esac
 else
   echo "  · The native macOS build isn't published yet. Your profile is saved for when it lands."
 fi

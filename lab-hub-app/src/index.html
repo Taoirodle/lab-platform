@@ -35,6 +35,7 @@
   <script src="modules/notify.js"></script>
   <script src="modules/genpages.js"></script>
   <script src="modules/palette.js"></script>
-  <script>LAB.boot().then(() => { LAB.telemetry.start(); LAB.notify.start(); });</script>
+  <script src="modules/live.js"></script>
+  <script>LAB.boot().then(() => { LAB.telemetry.start(); LAB.notify.start(); if (LAB.live) LAB.live.start(); });</script>
 </body>
 </html>

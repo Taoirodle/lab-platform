@@ -100,6 +100,15 @@ LAB.register({ id: 'stats', label: 'Stats', icon: I.stats, order: 9,
     el.appendChild(c3);
     LAB.charts.heat(c3.querySelector('#ch-hrs'), hrs, LAB.charts.cssVar('--a1', '#9a86ff'));
 
+    const exp = LAB.el('div', 'btnrow'); exp.style.marginTop = '14px'; exp.innerHTML = '<button class="btn" id="st-csv">Export the last 30 days as CSV</button><span class="muted" id="st-csv-msg"></span>'; el.appendChild(exp);
+    exp.querySelector('#st-csv').onclick = async () => {
+      const msg = exp.querySelector('#st-csv-msg'); msg.textContent = 'Preparing…';
+      try {
+        const r = await fetch(`${ctx.server}/api/usage/export.csv?device_id=${encodeURIComponent(LAB.telemetry.deviceId())}&days=30&tz=${encodeURIComponent(tz)}`); const csv = await r.text();
+        const p = await LAB.invoke('save_to_downloads', { name: 'lab-usage-' + new Date().toISOString().slice(0, 10) + '.csv', content: csv });
+        msg.textContent = p ? 'Saved to ' + p : 'Could not save.';
+      } catch { msg.textContent = 'Could not export right now.'; }
+    };
     el.appendChild(LAB.el('div', 'privacy', 'Measured on this PC once a minute while the app is open. Only the app name, its kind and machine load reach your server — window titles are shown live here and never stored. Switch it off in Settings.'));
   }
 });

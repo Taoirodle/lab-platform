@@ -247,6 +247,8 @@
       <div class="card" id="hubdev"><div class="empty">Loading…</div></div>
       <div class="lbl">Builders · generations</div>
       <div class="card" id="gens"><div class="empty">Loading…</div></div>
+      <div class="lbl">Audit trail</div>
+      <div class="card" id="audit"><div class="empty">Loading…</div></div>
     </div>
   </div>
 </main>
@@ -434,12 +436,17 @@
     $('gens').querySelectorAll('[data-gen]').forEach(b=>b.onclick=async()=>{ await fetch(`/api/generations/${b.dataset.gen}/${b.dataset.d}`,{method:'POST'}); loadGens(); });
     $('gens').querySelectorAll('[data-make]').forEach(b=>b.onclick=async()=>{ genBusy=true; b.textContent='Working…'; try{ await fetch('/api/generations/'+b.dataset.make,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); }catch{} genBusy=false; loadGens(); });
   }
+  async function loadAudit(){
+    const rows = await api('/api/audit?limit=40').catch(()=>[]);
+    $('audit').innerHTML = rows.length ? rows.map(r=>`<div class="dev" style="align-items:flex-start"><div><b>${esc(r.action)}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(r.actor||'system')}</span>${r.detail?`<div style="font-size:12px;color:var(--ink2);word-break:break-word">${esc(JSON.stringify(r.detail)).slice(0,160)}</div>`:''}</div><span style="font-size:11px;color:var(--ink3);white-space:nowrap">${new Date(r.ts).toLocaleString()}</span></div>`).join('') : '<div class="empty">Nothing recorded yet.</div>';
+  }
   function startPortal(){
     boot = LabLoader.overlay({ label: 'L.A.B Admin' });
     connect();
     initNeural();
     loadHubDevices();
     loadGens(); setInterval(loadGens, 60000);
+    loadAudit(); setInterval(loadAudit, 20000);
     setInterval(()=>{ loadApprovals(); loadFleet(); }, 5000);
     setInterval(loadHubDevices, 30000);
     setInterval(()=>{ loadAnalytics(false); }, 20000);

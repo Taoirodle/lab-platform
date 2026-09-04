@@ -22,7 +22,7 @@ const conductor = require('./conductor');
 const wizard = require('./wizard');
 const calendar = require('./calendar');
 
-const VERSION = 'M-000023';
+const VERSION = 'M-000024';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
@@ -39,7 +39,7 @@ app.use(express.json());
 const viaTunnel = req => !!(req.headers['cf-connecting-ip'] || req.headers['cf-ray'] || req.headers['x-forwarded-host']);
 const SENSITIVE = [
   /^\/$/, /^\/admin(\/|$)/, /^\/install(\/|$)/, /^\/showcase(\/|$)/,
-  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/devices|app\/sync)/
+  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/devices|app\/sync|audit)/
 ];
 app.use(async (req, res, next) => {
   if (!viaTunnel(req)) return next();                         // on the home network → trusted
@@ -63,6 +63,16 @@ app.use((req, res, next) => {
   next();
 });
 const clamp = (v, def) => (typeof v === 'number' ? Math.max(1, Math.min(10, Math.round(v))) : def);
+// Live updates: any successful change to shared things is announced over /ws as
+// {type:'shared', what} so every open app / hub / kiosk refreshes at once.
+const shared = what => { try { broadcast({ type: 'shared', what, t: Date.now() }); } catch { /* ws not up yet */ } };
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'OPTIONS' && req.method !== 'HEAD') {
+    const m = /^\/api\/(shared\/(todos|events)|calendar|conductor|kiosk|sauce|store)/.exec(req.path);
+    if (m) res.on('finish', () => { if (res.statusCode < 300 && !res.locals.quiet) shared(m[2] || m[1]); });
+  }
+  next();
+});
 
 function lanIP() {
   const nets = os.networkInterfaces();
@@ -445,6 +455,7 @@ app.post('/api/sauce/ask', wrap(async (req, res) => {
     const did = [];
     for (const a of (actions || [])) { const r = await runSauceAction(a); if (r) did.push(r); }
     db.events.add({ account_id: b.account_id || null, type: 'sauce', payload: { ms: Date.now() - t0, q: message.slice(0, 120), acted: did.length } }).catch(() => {});
+    if (!did.length) res.locals.quiet = true;   // a plain answer changes nothing — don't wake the other screens
     res.json({ reply, did });
   } catch (e) {
     res.status(503).json({ error: 'The Sauce is thinking too hard — give it another go in a moment.' });
@@ -511,6 +522,24 @@ app.delete('/api/fleet/:id', wrap(async (req, res) => { await db.devices.remove(
 
 // ---- admin onboarding (backed by the SQL Brain) ----
 app.get('/api/admin/list', wrap(async (req, res) => res.json(await db.admins.list())));
+// the audit trail: who/what did what on the platform (home-network only)
+app.get('/api/audit', wrap(async (req, res) => {
+  const n = Math.max(1, Math.min(200, Number(req.query.limit) || 40));
+  res.json(await db.pool.query('SELECT id,ts,actor,action,detail FROM audit ORDER BY ts DESC LIMIT $1', [n]).then(r => r.rows));
+}));
+// Stats → CSV: one row per active minute of the last N days for one device (the person's own export)
+app.get('/api/usage/export.csv', wrap(async (req, res) => {
+  if (!req.query.device_id) return res.status(400).json({ error: 'device_id required' });
+  const days = Math.max(1, Math.min(365, Number(req.query.days) || 30));
+  const tz = /^[A-Za-z0-9_\/+\-]{1,64}$/.test(req.query.tz || '') ? req.query.tz : 'UTC';
+  let rows = [];
+  try { rows = await db.pool.query(`SELECT to_char(ts AT TIME ZONE $3,'YYYY-MM-DD HH24:MI') AS at, app, category, cpu, mem, idle FROM usage_samples WHERE device_id=$1 AND ts >= now() - make_interval(days => $2::int) ORDER BY ts`, [String(req.query.device_id).slice(0, 80), days, tz]).then(r => r.rows); }
+  catch { rows = await db.pool.query(`SELECT to_char(ts,'YYYY-MM-DD HH24:MI') AS at, app, category, cpu, mem, idle FROM usage_samples WHERE device_id=$1 AND ts >= now() - make_interval(days => $2::int) ORDER BY ts`, [String(req.query.device_id).slice(0, 80), days]).then(r => r.rows); }
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="lab-usage.csv"');
+  res.send('minute,app,kind,cpu_pct,mem_pct,idle\n' + rows.map(r => [q(r.at), q(r.app), q(r.category), r.cpu ?? '', r.mem ?? '', r.idle ? 1 : 0].join(',')).join('\n') + '\n');
+}));
 app.post('/api/admin/onboard', wrap(async (req, res) => {
   const name = String((req.body && req.body.name) || '').trim().slice(0, 60);
   if (!name) return res.status(400).json({ error: 'name required' });
