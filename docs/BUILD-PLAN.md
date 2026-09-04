@@ -111,11 +111,11 @@
 - [x] Lists: `shared_todos.list` (normalised, default Family), `GET /api/shared/lists` (open counts), `?list=` filter; dashboard "Lists" widget + web hub list chips with "+" for a new list; The Sauce's `todo` takes a list and its context shows `[Groceries] …`. Verified: "add oat milk to the groceries" → landed on Groceries.
 
 ### 16 · Wave seven (pick top-down)
-- [ ] Kiosk: a Lists panel (Groceries first if it exists) with touch-to-tick and add.
-- [ ] Admin: invite a family member — creates the account with a one-time PIN shown once; the person logs in and changes it (Profile). Accounts list with roles in Admin.
-- [ ] Stats: "vs last week" deltas on the KPI tiles (summary returns the previous 7 days too).
+- [x] Kiosk Lists panel: list chips (Groceries first when it exists), tap-to-tick, add; refreshes every 30 s.
+- [x] Admin "Family · accounts" card + `POST /api/admin/invite` (one-time 6-digit PIN shown once). Verified: invite → login with the PIN → duplicate name rejected.
+- [x] Stats: "+/−Xh vs last week" on the This-week tile (from the 14-day series, no extra call).
 - [ ] Web hub on a phone: check the layout at 375 px in the browser pane, fix what wraps badly (brother reaches it over Tailscale on a phone).
-- [ ] `docs/13-hub-app.md` refresh for waves 12–15 (home/away, offline cache, live updates, palette, lists, time automations).
+- [x] `docs/13-hub-app.md` refreshed (home/away/offline/live/palette; lists, automations, devices).
 
 ---
 

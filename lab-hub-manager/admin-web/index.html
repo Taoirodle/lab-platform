@@ -247,6 +247,8 @@
       <div class="card" id="hubdev"><div class="empty">Loading…</div></div>
       <div class="lbl">Builders · generations</div>
       <div class="card" id="gens"><div class="empty">Loading…</div></div>
+      <div class="lbl">Family · accounts</div>
+      <div class="card" id="family"><div class="empty">Loading…</div></div>
       <div class="lbl">Audit trail</div>
       <div class="card" id="audit"><div class="empty">Loading…</div></div>
     </div>
@@ -436,6 +438,16 @@
     $('gens').querySelectorAll('[data-gen]').forEach(b=>b.onclick=async()=>{ await fetch(`/api/generations/${b.dataset.gen}/${b.dataset.d}`,{method:'POST'}); loadGens(); });
     $('gens').querySelectorAll('[data-make]').forEach(b=>b.onclick=async()=>{ genBusy=true; b.textContent='Working…'; try{ await fetch('/api/generations/'+b.dataset.make,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); }catch{} genBusy=false; loadGens(); });
   }
+  async function loadFamily(){
+    const list = await api('/api/accounts').catch(()=>[]);
+    $('family').innerHTML = (list.length ? list.map(a=>`<div class="dev"><div><b>${esc(a.name)}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(a.role||'member')} · since ${new Date(a.created_at).toLocaleDateString()}</span></div><span style="font-size:18px">${a.avatar&&a.avatar.emoji?esc(a.avatar.emoji):''}</span></div>`).join('') : '<div class="empty">No accounts yet.</div>')
+      + `<div style="display:flex;gap:8px;margin-top:12px;align-items:center"><input id="inv-name" placeholder="Invite someone (name)" maxlength="40" style="flex:1;font:inherit;padding:8px 10px;border:1px solid var(--line2);border-radius:2px"><button class="btn ghost" id="inv-go">Invite</button></div><div id="inv-out" style="font-size:12px;color:var(--ink2);margin-top:8px"></div>`;
+    $('inv-go').onclick=async()=>{ const name=$('inv-name').value.trim(); if(!name) return $('inv-name').focus();
+      const r=await fetch('/api/admin/invite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}).then(r=>r.json()).catch(()=>({error:'failed'}));
+      if(r.error){ $('inv-out').textContent=r.error; return; }
+      $('inv-out').innerHTML=`<b>${esc(r.name)}</b> can log in with the one-time PIN <b style="font-size:16px;letter-spacing:2px">${esc(r.pin)}</b> — shown once. They change it on their Profile.`; $('inv-name').value='';
+      setTimeout(loadFamily, 20000); };
+  }
   async function loadAudit(){
     const rows = await api('/api/audit?limit=40').catch(()=>[]);
     $('audit').innerHTML = rows.length ? rows.map(r=>`<div class="dev" style="align-items:flex-start"><div><b>${esc(r.action)}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(r.actor||'system')}</span>${r.detail?`<div style="font-size:12px;color:var(--ink2);word-break:break-word">${esc(JSON.stringify(r.detail)).slice(0,160)}</div>`:''}</div><span style="font-size:11px;color:var(--ink3);white-space:nowrap">${new Date(r.ts).toLocaleString()}</span></div>`).join('') : '<div class="empty">Nothing recorded yet.</div>';
@@ -447,6 +459,7 @@
     loadHubDevices();
     loadGens(); setInterval(loadGens, 60000);
     loadAudit(); setInterval(loadAudit, 20000);
+    loadFamily();
     setInterval(()=>{ loadApprovals(); loadFleet(); }, 5000);
     setInterval(loadHubDevices, 30000);
     setInterval(()=>{ loadAnalytics(false); }, 20000);

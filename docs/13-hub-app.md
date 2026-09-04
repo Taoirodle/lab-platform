@@ -72,6 +72,14 @@ The server's AI team can ship three artifact kinds: **skins** (CSS variables), *
 
 `LAB.look` = layout overhaul (`classic` / `compact` rail / `topbar`) + effects (`glass`, `glow`, `calm`, `dense`) as `<html>` classes, saved per install and applied at boot. Colour themes come from the server's builders (`/api/hub/generations`) as CSS-variable sets. All of it is in the App Store.
 
+## Home, away, offline, live
+
+`LAB.pickServer()` pings the home address, then the *away* address from Settings (the server's Tailscale IP), and the footer says which it's on. Every GET is cached per install; if the server can't be reached, pages render the last answer under an "Offline — showing what your L.A.B last said" bar and writes fail honestly; the app re-picks a server every 45 s until it's back. `modules/live.js` keeps one WebSocket to `/ws`: the manager announces every successful change to shared things (`{type:'shared', what, by}`) and the page you're on refreshes at once — plus a quiet toast when it was someone else. Ctrl/Cmd+K opens the palette (pages, scenes, or ask The Sauce inline).
+
+## Lists, automations, devices
+
+To-dos live in named lists (`Family`, `Groceries`, `Chores`, …) on the Dashboard, the web hub and the kiosk; The Sauce files things on the right list. The Automations page onboards devices (WLED / WiZ by IP, push sensors get a token once, virtual for trying things), saves scenes from the current light states, and builds automations from motion *or* the clock (`{type:'time', at, days}` — checked every minute in the house timezone, never twice in a minute).
+
 ## Releasing
 
 1. Bump `version` in `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `package.json`, `src/config.js` (and the footer in `index.html`).

@@ -56,13 +56,15 @@ LAB.register({ id: 'stats', label: 'Stats', icon: I.stats, order: 9,
 
     const days = sum.days || [], today = days[days.length - 1] || { cats: {}, total: 0 };
     const week = days.slice(-7), weekTot = week.reduce((s, d) => s + d.total, 0);
+    const prevTot = days.slice(-14, -7).reduce((s, d) => s + d.total, 0);
+    const delta = prevTot ? `<span class="muted" style="font-size:12px;font-weight:600"> ${weekTot >= prevTot ? '+' : '−'}${fmtMin(Math.abs(weekTot - prevTot))} vs last week</span>` : '';
     const catWeek = {}; week.forEach(d => Object.entries(d.cats).forEach(([k, v]) => { catWeek[k] = (catWeek[k] || 0) + v; }));
     const topCat = Object.entries(catWeek).sort((a, b) => b[1] - a[1])[0];
     let streak = 0;
     for (let i = days.length - 1; i >= 0; i--) { if (days[i].total >= 30) streak++; else if (i === days.length - 1) continue; else break; }
 
     const kp = LAB.el('div', 'kpis');
-    kp.innerHTML = `<div class="kpi"><span>Today</span><b>${fmtMin(today.total)}</b></div><div class="kpi"><span>This week</span><b>${fmtMin(weekTot)}</b></div>
+    kp.innerHTML = `<div class="kpi"><span>Today</span><b>${fmtMin(today.total)}</b></div><div class="kpi"><span>This week</span><b>${fmtMin(weekTot)}</b>${delta}</div>
       <div class="kpi"><span>Streak</span><b>${streak} day${streak === 1 ? '' : 's'}</b></div>
       <div class="kpi"><span>Mostly</span><b>${topCat ? `<i style="background:${COLOR[topCat[0]] || COLOR.Other}"></i>${LAB.esc(topCat[0])}` : '—'}</b></div>`;
     el.appendChild(kp);

@@ -550,6 +550,17 @@ app.delete('/api/fleet/:id', wrap(async (req, res) => { await db.devices.remove(
 
 // ---- admin onboarding (backed by the SQL Brain) ----
 app.get('/api/admin/list', wrap(async (req, res) => res.json(await db.admins.list())));
+// Invite a family member: the account is created with a one-time PIN shown to the admin once;
+// they log in with it and change it on their Profile.
+app.post('/api/admin/invite', wrap(async (req, res) => {
+  const name = String((req.body || {}).name || '').trim().slice(0, 40);
+  if (!name) return res.status(400).json({ error: 'A name is needed.' });
+  if (await db.accounts.exists(name)) return res.status(409).json({ error: 'That name is already taken.' });
+  const pin = String(Math.floor(100000 + Math.random() * 900000));
+  const a = await db.accounts.create(name, pin);
+  db.audit('admin', 'account.invite', { id: a.id, name });
+  res.json({ id: a.id, name: a.name, pin });
+}));
 // the audit trail: who/what did what on the platform (home-network only)
 app.get('/api/audit', wrap(async (req, res) => {
   const n = Math.max(1, Math.min(200, Number(req.query.limit) || 40));
