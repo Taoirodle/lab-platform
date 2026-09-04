@@ -14,6 +14,11 @@ body{font-family:var(--disp);color:var(--txt);background:radial-gradient(1000px 
 .autobuild .w{color:var(--txt2);font-size:14px}
 .autobuild select{padding:11px 13px;background:rgba(0,0,0,.28);border:1px solid var(--stroke);border-radius:11px;color:var(--txt);font:inherit;font-size:14px}
 .autobuild select:focus{outline:none;border-color:var(--a1)}
+.autobuild input[type=time]{padding:10px 12px;background:rgba(0,0,0,.28);border:1px solid var(--stroke);border-radius:11px;color:var(--txt);font:inherit;font-size:14px}
+.daychip{display:inline-flex;margin-right:4px}
+.daychip input{display:none}
+.daychip span{font-family:var(--mono);font-size:11px;padding:6px 8px;border:1px solid var(--stroke);border-radius:8px;color:var(--txt2);cursor:pointer}
+.daychip input:checked+span{background:var(--panel2);color:var(--txt);border-color:var(--a1)}
 #shell{display:flex;height:100vh}
 /* sidebar */
 #sidebar{width:214px;flex:none;background:rgba(0,0,0,.28);border-right:1px solid var(--stroke);display:flex;flex-direction:column;padding:16px 12px}
@@ -251,6 +256,9 @@ html.fx-dense .phead h1{font-size:22px}
 .pitem.on{background:var(--panel2)}
 .pitem.answer{display:block;line-height:1.5;cursor:default}
 .pitem.muted{color:var(--txt2);cursor:default}
+/* toast */
+.toast{position:fixed;right:22px;bottom:22px;background:var(--panel2);border:1px solid var(--stroke);color:var(--txt);border-radius:12px;padding:10px 14px;font-size:13px;box-shadow:0 12px 30px rgba(0,0,0,.35);opacity:0;transform:translateY(8px);transition:opacity .2s,transform .2s;pointer-events:none;z-index:40;max-width:60vw}
+.toast.on{opacity:1;transform:none}
 /* skins */
 .skins{display:flex;flex-wrap:wrap;gap:8px}
 .skin{border:1px solid var(--stroke);background:var(--panel);color:var(--txt);border-radius:10px;padding:8px 13px;cursor:pointer;font:inherit;font-size:12px;font-weight:600;position:relative;padding-left:26px}

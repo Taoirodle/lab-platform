@@ -197,11 +197,33 @@ async function saveAutomation({ id, name, trigger, actions, enabled = true }) {
     [id, name, JSON.stringify(trigger || {}), JSON.stringify(actions || []), enabled]);
   return { id, name };
 }
+async function removeAutomation(id) { await db.pool.query('DELETE FROM automations WHERE id=$1', [id]); }
+async function setAutomationEnabled(id, enabled) { return db.pool.query('UPDATE automations SET enabled=$2 WHERE id=$1 RETURNING id,name,enabled', [id, !!enabled]).then(r => r.rows[0] || null); }
+
+// time triggers: {type:'time', at:'HH:MM', days:[0..6]} — checked once a minute in the house's timezone
+const TZ = process.env.LAB_TZ || 'Africa/Johannesburg';
+const firedAt = new Map();   // automation id → 'YYYY-MM-DD HH:MM' so a minute never fires twice
+let clock = null;
+function localNow() {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour12: false, weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date()).map(x => [x.type, x.value]));
+  return { at: `${String(p.hour).padStart(2, '0') === '24' ? '00' : String(p.hour).padStart(2, '0')}:${p.minute}`, day: `${p.year}-${p.month}-${p.day}`, dow: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday) };
+}
+function startClock() {
+  if (clock) return;
+  const tick = () => { const n = localNow(); runAutomations({ type: 'time', at: n.at, dow: n.dow, day: n.day }).catch(() => {}); };
+  clock = setInterval(tick, 60000); setTimeout(tick, 5000);
+}
+
 async function runAutomations(ev) {
   const autos = await db.pool.query('SELECT * FROM automations WHERE enabled=true').then(r => r.rows).catch(() => []);
   for (const a of autos) {
     const t = a.trigger || {};
     if (t.type && t.type !== ev.type) continue;
+    if (t.type === 'time') {
+      if (t.at !== ev.at) continue;
+      if (Array.isArray(t.days) && t.days.length && !t.days.includes(ev.dow)) continue;
+      const key = ev.day + ' ' + ev.at; if (firedAt.get(a.id) === key) continue; firedAt.set(a.id, key);
+    }
     if (t.room && t.room !== ev.room) continue;
     if (t.entity && t.entity !== ev.entity) continue;
     for (const act of (a.actions || [])) {
@@ -243,4 +265,4 @@ async function seed() {
   return true;
 }
 
-module.exports = { bus, DRIVERS: Object.keys(DRIVERS), listEntities, getEntity, addEntity, removeEntity, command, setState, ingest, listScenes, saveScene, runScene, listAutomations, saveAutomation, probeAll, seed };
+module.exports = { bus, DRIVERS: Object.keys(DRIVERS), listEntities, getEntity, addEntity, removeEntity, command, setState, ingest, listScenes, saveScene, runScene, listAutomations, saveAutomation, removeAutomation, setAutomationEnabled, startClock, probeAll, seed };

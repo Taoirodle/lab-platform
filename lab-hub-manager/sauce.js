@@ -40,12 +40,14 @@ function toolDoc(house) {
   return `You can ACT on the home. Only act on what the person actually asked for.
 Available scenes: ${(house.scenes || []).map(s => s.name).join(', ') || '(none)'}
 Rooms: ${(house.rooms || []).map(r => `${r.id} (${r.on ? 'on' : 'off'})`).join(', ') || '(none)'}
+Devices by name: ${(house.devices || []).map(d => `${d.name} [${d.room}, ${d.on ? 'on' : 'off'}]`).join('; ') || '(none)'}
 Calendar (today + tomorrow, real): ${ev || '(nothing on)'}
 Open family to-dos (real): ${todos || '(list is clear)'}
 
 Actions you may emit in "actions":
 - {"tool":"scene","name":"<scene>"}            run a saved scene (e.g. movie-night, all-off)
 - {"tool":"light","room":"<room id>","on":true|false}   switch one room's lights
+- {"tool":"device","name":"<device name>","on":true|false}   switch one named device (strip, lamp, plug)
 - {"tool":"todo","text":"<short>"}             add to the shared family to-do
 - {"tool":"todo_done","text":"<words from an open to-do>"}   tick an open to-do off
 - {"tool":"event","title":"<short>","day":"YYYY-MM-DD","time":"HH:MM" optional}  add to the shared family calendar

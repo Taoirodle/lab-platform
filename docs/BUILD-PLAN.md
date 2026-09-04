@@ -104,10 +104,17 @@
 - [x] Stats CSV export (`/api/usage/export.csv`, tz-aware) → saved to Downloads from the app. Verified: real Twizzler minutes in the CSV.
 - [x] Mac/Linux wizards offer to open/run the download.
 
+### 15 · Wave six (pick top-down)
+- [x] Time-based automations: Conductor clock (house tz, once per minute, never twice a minute), `{type:'time', at, days}` validated; enable/disable + delete routes; builder offers "the clock says…" with day chips. **Verified live:** automation created for the next minute fired at 18:23:15 exactly (audit `fired` → scene → lamp on).
+- [x] The Sauce controls devices by name (`device` tool, name/room match) with devices in its context. Verified: "switch off the smoke lamp" → did it.
+- [x] Change toasts: broadcasts carry `by`; the app toasts "Mom changed the family list" for other people's changes (verified in-browser).
+- [ ] Lists: `shared_todos.list` (default "Family"); dashboard widget + web hub get a list switcher (Groceries, Chores…); The Sauce's `todo` action accepts a list.
+
 ---
 
 ## Log
 - 2026-09-04 00:55 — Run started. Cron installed. Plan written. Repo public; CI re-fired on `app-v0.1.0`.
+- 2026-09-04 19:10 — **0.2.3 released** (tag at 731d279 = the built exe: home/away, offline cache, devices, palette, digest, live updates, live_device, CSV). Wave 15 first three items shipped + verified live (time automations fired on the minute; Sauce by device name; toasts). Tao was live on the kiosk/admin during the test (audit 18:18–18:23).
 - 2026-09-04 18:45 — Waves 13+14 shipped (M-000024): backups cron + restore, smoke.sh 28/28, kiosk/hub Sauce, retention control, live WS updates (verified with a real WS client), hub calendar linking, audit trail, CSV export, live_device page. 0.2.3 final build running (then tag). Audit log shows Tao using the new Admin desk at 16:15.
 - 2026-09-04 17:40 — Wave 12 built + verified in-browser (home/away/offline, device onboarding, palette; server retention purge, hub Sauce card). Build for 0.2.3 in progress.
 - 2026-09-04 16:58 — **0.2.2 released** (day timeline, family.ics subscribe card, Sauce widget history; web: admin builders desk, hub version, kiosk panels; wizard launches installer). Browser pass clean on all 10 pages; exe verified; installer + version.json published; tag `app-v0.2.2`. Wave 11 complete; wave 12 defined. (Turn gap 11:00→16:54: cron fires queued while the previous turn ran.)

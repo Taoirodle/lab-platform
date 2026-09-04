@@ -69,7 +69,8 @@ const shared = what => { try { broadcast({ type: 'shared', what, t: Date.now() }
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'OPTIONS' && req.method !== 'HEAD') {
     const m = /^\/api\/(shared\/(todos|events)|calendar|conductor|kiosk|sauce|store)/.exec(req.path);
-    if (m) res.on('finish', () => { if (res.statusCode < 300 && !res.locals.quiet) shared(m[2] || m[1]); });
+    const by = req.body && (req.body.by || req.body.name) ? String(req.body.by || req.body.name).slice(0, 40) : null;
+    if (m) res.on('finish', () => { if (res.statusCode < 300 && !res.locals.quiet) { try { broadcast({ type: 'shared', what: m[2] || m[1], by, t: Date.now() }); } catch {} } });
   }
   next();
 });
@@ -396,7 +397,14 @@ app.get('/api/conductor/scenes', wrap(async (req, res) => res.json(await conduct
 app.post('/api/conductor/scenes', wrap(async (req, res) => res.json(await conductor.saveScene(req.body || {}))));
 app.post('/api/conductor/scenes/:id/run', wrap(async (req, res) => res.json(await conductor.runScene(req.params.id, 'api'))));
 app.get('/api/conductor/automations', wrap(async (req, res) => res.json(await conductor.listAutomations())));
-app.post('/api/conductor/automations', wrap(async (req, res) => res.json(await conductor.saveAutomation(req.body || {}))));
+app.post('/api/conductor/automations', wrap(async (req, res) => {
+  const b = req.body || {}, t = b.trigger || {};
+  if (t.type === 'time' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(t.at || ''))) return res.status(400).json({ error: 'a time trigger needs at: "HH:MM"' });
+  if (t.type === 'time') t.days = Array.isArray(t.days) ? t.days.map(Number).filter(d => d >= 0 && d <= 6) : [];
+  res.json(await conductor.saveAutomation({ ...b, trigger: t }));
+}));
+app.delete('/api/conductor/automations/:id', wrap(async (req, res) => { await conductor.removeAutomation(req.params.id); res.json({ ok: true }); }));
+app.post('/api/conductor/automations/:id/enable', wrap(async (req, res) => res.json(await conductor.setAutomationEnabled(req.params.id, (req.body || {}).enabled !== false))));
 // sensor ingest — our ESP32s POST here (motion, temperature, anything)
 app.post('/api/ingest/:token', wrap(async (req, res) => {
   const e = await conductor.ingest(req.params.token, req.body || {});
@@ -418,6 +426,13 @@ async function runSauceAction(a) {
     if (a.tool === 'todo' && a.text) {
       await db.pool.query('INSERT INTO shared_todos(text,by_name) VALUES($1,$2)', [String(a.text).slice(0, 300), 'The Sauce']);
       return `added "${String(a.text).slice(0, 60)}" to the list`;
+    }
+    if (a.tool === 'device' && a.name) {
+      const ents = await conductor.listEntities(), q = String(a.name).toLowerCase();
+      const e = ents.find(x => x.name.toLowerCase() === q) || ents.find(x => x.name.toLowerCase().includes(q)) || ents.find(x => x.room.toLowerCase() === q);
+      if (!e || !(e.kind === 'light' || e.kind === 'led-strip' || e.kind === 'switch')) return null;
+      await conductor.command(e.id, { on: !!a.on }, 'sauce');
+      return `turned ${a.on ? 'on' : 'off'} ${e.name}`;
     }
     if (a.tool === 'todo_done' && a.text) {
       // tick the open item that matches best (all words present, else the longest common word)
@@ -445,13 +460,15 @@ app.post('/api/sauce/ask', wrap(async (req, res) => {
   try {
     // give the brain the live state of the house — devices, today's calendar, the open list — so it answers from reality
     const tz = calendar.DEFAULT_TZ, today = new Date().toLocaleDateString('en-CA', { timeZone: tz }), tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: tz });
-    const [rooms, scenes, events, todos] = await Promise.all([
+    const [rooms, scenes, events, todos, ents] = await Promise.all([
       roomsView().catch(() => []), conductor.listScenes().catch(() => []),
       calendar.events({ account_id: b.account_id ? Number(b.account_id) : null, from: today, to: tomorrow }).catch(() => []),
-      db.pool.query('SELECT text FROM shared_todos WHERE NOT done ORDER BY created_at DESC LIMIT 12').then(r => r.rows).catch(() => [])
+      db.pool.query('SELECT text FROM shared_todos WHERE NOT done ORDER BY created_at DESC LIMIT 12').then(r => r.rows).catch(() => []),
+      conductor.listEntities().catch(() => [])
     ]);
+    const devices = ents.filter(e => e.kind === 'light' || e.kind === 'led-strip' || e.kind === 'switch').map(e => ({ name: e.name, room: e.room, on: !!(e.state && e.state.on) }));
     const now = new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
-    const { reply, actions } = await sauce.ask({ name: b.name, message, history: Array.isArray(b.history) ? b.history : [], house: { rooms, scenes, events, todos, today, now } });
+    const { reply, actions } = await sauce.ask({ name: b.name, message, history: Array.isArray(b.history) ? b.history : [], house: { rooms, scenes, devices, events, todos, today, now } });
     const did = [];
     for (const a of (actions || [])) { const r = await runSauceAction(a); if (r) did.push(r); }
     db.events.add({ account_id: b.account_id || null, type: 'sauce', payload: { ms: Date.now() - t0, q: message.slice(0, 120), acted: did.length } }).catch(() => {});
@@ -783,6 +800,7 @@ collectStats();
       devteam.startScheduler();
       startLedgerSchedulers();
       calendar.start();
+      conductor.startClock();
       return;
     }
     catch (e) { if (i === 0) console.log('waiting for SQL Brain…', e.code || e.message); await new Promise(r => setTimeout(r, 3000)); }

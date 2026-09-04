@@ -86,13 +86,21 @@ LAB.register({ id: 'automations', label: 'Automations', icon: I.bolt, order: 6,
         <div class="card"><h3>Scenes · ${scenes.length}</h3>
           ${scenes.length ? scenes.map(s => `<div class="prow"><span><b>${LAB.esc(s.name)}</b><div class="muted">${(s.actions || []).length} step${(s.actions || []).length === 1 ? '' : 's'}</div></span><button class="btn" data-run="${LAB.esc(s.id)}">Run</button></div>`).join('') : '<div class="muted">No scenes yet.</div>'}
           <form class="wadd" id="s-save" style="margin-top:12px"><input id="s-name" placeholder="Save how the lights are right now as…" maxlength="40" required><button class="btn pri">Save scene</button></form></div>
-        <div class="card"><h3>Automations · ${autos.length}</h3><div>${autos.length ? autos.map(a => `<div class="prow"><span>${LAB.esc(a.name)}</span><b>${a.enabled ? 'on' : 'off'}</b></div>`).join('') : '<div class="muted">None yet — build one below.</div>'}</div>
+        <div class="card"><h3>Automations · ${autos.length}</h3><div>${autos.length ? autos.map(a => { const t = a.trigger || {}; const when = t.type === 'time' ? 'at ' + LAB.esc(t.at) + (t.days && t.days.length && t.days.length < 7 ? ' on ' + t.days.map(d => ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][d]).join(' ') : ' daily') : 'when motion in ' + LAB.esc(t.room || '?');
+            return `<div class="prow"><span><b>${LAB.esc(a.name)}</b><div class="muted">${when} → ${(a.actions || []).map(x => x.scene ? 'scene ' + LAB.esc(scenes.find(s => s.id === x.scene)?.name || x.scene) : 'device').join(', ')}</div></span><span class="btnrow"><button class="btn ${a.enabled ? 'pri' : ''}" data-aen="${LAB.esc(a.id)}" data-on="${a.enabled ? 1 : 0}">${a.enabled ? 'On' : 'Off'}</button><button class="btn" data-adel="${LAB.esc(a.id)}">Delete</button></span></div>`; }).join('') : '<div class="muted">None yet — build one below.</div>'}</div>
           <div class="autobuild" style="margin-top:12px">
           <span class="w">When</span>
-          <select id="a-trig">${rooms.map(r => `<option value="${LAB.esc(r)}">motion in ${LAB.esc(r)}</option>`).join('') || '<option>no rooms yet</option>'}</select>
+          <select id="a-kind"><option value="motion">motion in…</option><option value="time">the clock says…</option></select>
+          <select id="a-trig">${rooms.map(r => `<option value="${LAB.esc(r)}">${LAB.esc(r)}</option>`).join('') || '<option>no rooms yet</option>'}</select>
+          <input type="time" id="a-at" value="22:00" hidden>
+          <span id="a-days" hidden>${['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d, i) => `<label class="daychip"><input type="checkbox" value="${i}" checked><span>${d}</span></label>`).join('')}</span>
           <span class="w">run</span>
           <select id="a-scene">${scenes.map(s => `<option value="${LAB.esc(s.id)}">${LAB.esc(s.name)}</option>`).join('') || '<option>no scenes yet</option>'}</select>
-          <button class="btn pri" id="a-save">Create</button></div></div>`;
+          <button class="btn pri" id="a-save">Create</button></div><div class="muted" id="a-msg"></div></div>`;
+      const kindSel = wrap.querySelector('#a-kind');
+      kindSel.onchange = () => { const time = kindSel.value === 'time'; wrap.querySelector('#a-trig').hidden = time; wrap.querySelector('#a-at').hidden = !time; wrap.querySelector('#a-days').hidden = !time; };
+      wrap.querySelectorAll('[data-aen]').forEach(b => b.onclick = async () => { await post('/api/conductor/automations/' + encodeURIComponent(b.dataset.aen) + '/enable', { enabled: b.dataset.on !== '1' }).catch(() => {}); refresh(); });
+      wrap.querySelectorAll('[data-adel]').forEach(b => b.onclick = async () => { await post('/api/conductor/automations/' + encodeURIComponent(b.dataset.adel), null, 'DELETE').catch(() => {}); refresh(); });
       flash = null;
       wrap.querySelector('#d-add').onsubmit = async e => {
         e.preventDefault(); const msg = wrap.querySelector('#d-msg'); const driver = wrap.querySelector('#d-driver').value, addr = wrap.querySelector('#d-addr').value.trim();
@@ -116,10 +124,13 @@ LAB.register({ id: 'automations', label: 'Automations', icon: I.bolt, order: 6,
       };
       const save = wrap.querySelector('#a-save');
       if (save) save.onclick = async () => {
-        const room = wrap.querySelector('#a-trig').value, scene = wrap.querySelector('#a-scene').value;
-        if (!room || !scene) return;
-        await post('/api/conductor/automations', { name: 'When motion in ' + room, trigger: { type: 'motion', room }, actions: [{ scene }] }).catch(() => {});
-        refresh();
+        const scene = wrap.querySelector('#a-scene').value, sceneName = scenes.find(s => s.id === scene)?.name || scene; if (!scene) return;
+        let body;
+        if (kindSel.value === 'time') {
+          const at = wrap.querySelector('#a-at').value, days = [...wrap.querySelectorAll('#a-days input:checked')].map(i => +i.value);
+          if (!at) return; body = { name: `${sceneName} at ${at}`, trigger: { type: 'time', at, days: days.length === 7 ? [] : days }, actions: [{ scene }] };
+        } else { const room = wrap.querySelector('#a-trig').value; if (!room) return; body = { name: `${sceneName} when motion in ${room}`, trigger: { type: 'motion', room }, actions: [{ scene }] }; }
+        try { await post('/api/conductor/automations', body); refresh(); } catch (e) { wrap.querySelector('#a-msg').textContent = e.message; }
       };
     }
     refresh();

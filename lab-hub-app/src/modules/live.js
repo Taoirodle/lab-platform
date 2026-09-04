@@ -23,6 +23,15 @@ LAB.live = {
   restart() { try { this.ws && this.ws.close(); } catch {} this.ws = null; this.tries = 0; this.start(); }
 };
 
+// A quiet toast when someone ELSE changes the list or the calendar.
+const TOAST_WHAT = { todos: 'changed the family list', events: 'changed the family calendar', calendar: 'changed a calendar', conductor: 'changed a device', kiosk: 'switched a room' };
+document.addEventListener('lab:shared', e => {
+  const d = e.detail; if (!d.by || !TOAST_WHAT[d.what]) return;
+  if (LAB.ctx.me && d.by.toLowerCase() === String(LAB.ctx.me.name).toLowerCase()) return;
+  let t = document.getElementById('toast'); if (!t) { t = LAB.el('div', 'toast'); t.id = 'toast'; document.body.appendChild(t); }
+  t.textContent = d.by + ' ' + TOAST_WHAT[d.what]; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 4000);
+});
+
 // Pages that show shared things re-render when they change — unless you're mid-typing.
 const LIVE_PAGES = { todos: ['dashboard'], events: ['dashboard', 'calendar'], calendar: ['dashboard', 'calendar'], conductor: ['dashboard', 'automations'], kiosk: ['dashboard', 'automations'], sauce: ['dashboard', 'calendar', 'automations'], store: ['appstore'] };
 let liveDebounce = null;
