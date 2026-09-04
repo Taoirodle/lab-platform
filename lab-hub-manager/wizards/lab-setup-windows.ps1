@@ -85,7 +85,10 @@ Write-Host "  Checking for your app build..." -ForegroundColor Cyan
 try {
   $out = Join-Path $env:USERPROFILE "Downloads\L.A.B-Hub-Setup.exe"
   Invoke-WebRequest -Uri "$Server/app/download/win" -OutFile $out -ErrorAction Stop
-  Write-Host "  ✓ Downloaded to $out — run it to finish.`n" -ForegroundColor Green
+  Write-Host "  ✓ Downloaded to $out" -ForegroundColor Green
+  $go = Read-Host "  Run the installer now? [Y/n]"
+  if ($go -eq '' -or $go -match '^[Yy]') { Start-Process -FilePath $out; Write-Host "  Installer opened — the app signs you in on first launch.`n" -ForegroundColor Green }
+  else { Write-Host "  Run it whenever you like — it's in your Downloads.`n" -ForegroundColor Yellow }
 } catch {
   Write-Host "  · The native Windows build isn't published yet." -ForegroundColor Yellow
   Write-Host "    Your profile is saved — the app will pick it up the moment it lands.`n" -ForegroundColor Yellow

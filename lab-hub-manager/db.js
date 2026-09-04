@@ -453,6 +453,20 @@ const usage = {
     const m = meta[0] || {};
     return { device_id, tz, days: list, top_apps: top, hours, total_minutes: m.total || 0, active_minutes: m.active || 0, first_seen: m.first_seen, last_seen: m.last_seen };
   },
+  // one local day as runs: consecutive minutes of the same app (or idle) collapse into a block
+  day: async ({ device_id, date, tz }) => {
+    tz = safeTz(tz);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) date = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const rows = await pool.query(`SELECT ts, app, category, idle FROM usage_samples WHERE device_id=$1 AND (ts AT TIME ZONE $3)::date = $2::date ORDER BY ts`, [device_id, date, tz]).then(r => r.rows);
+    const hhmm = ms => new Date(ms).toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
+    const runs = [];
+    for (const r of rows) {
+      const t = new Date(r.ts).getTime(), key = r.idle ? 'idle' : (r.app || 'other'), last = runs[runs.length - 1];
+      if (last && last.key === key && t - last.end_ms <= 120000) { last.end_ms = t + 60000; last.mins++; }
+      else runs.push({ key, app: r.idle ? null : r.app, category: r.idle ? 'Idle' : (r.category || 'Other'), idle: !!r.idle, start_ms: t, end_ms: t + 60000, mins: 1 });
+    }
+    return { device_id, date, tz, active_minutes: rows.filter(r => !r.idle).length, runs: runs.map(x => ({ app: x.app, category: x.category, idle: x.idle, mins: x.mins, start: hhmm(x.start_ms), end: hhmm(x.end_ms) })) };
+  },
   devices: () => pool.query(
     `SELECT d.id, d.name, d.os, d.account_id, a.name AS account, d.last_seen,
        (SELECT count(*) FROM usage_samples u WHERE u.device_id=d.id AND u.ts > now() - interval '7 days' AND NOT u.idle)::int AS active_7d

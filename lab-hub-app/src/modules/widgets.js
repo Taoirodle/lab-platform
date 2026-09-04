@@ -116,14 +116,19 @@ LAB.widgets.register({ id: 'house', title: 'House', size: 'md',
 
 LAB.widgets.register({ id: 'sauce', title: 'Ask The Sauce', size: 'md',
   render(el, ctx) {
-    el.innerHTML = `<form class="wadd"><input placeholder="Lights off in the lounge · add milk to the list · what's on tonight?" maxlength="500"><button class="btn pri">Ask</button></form><div class="wreply"></div>`;
-    const out = el.querySelector('.wreply');
+    // the last few exchanges stick around (per install) so a follow-up makes sense
+    let hist = LAB.store.get('sauce_hist') || [];
+    el.innerHTML = `<div class="wreply" id="w-sauce-log"></div><form class="wadd"><input placeholder="Lights off in the lounge · add milk to the list · what's on tonight?" maxlength="500"><button class="btn pri">Ask</button></form>`;
+    const log = el.querySelector('#w-sauce-log');
+    const paint = () => { log.innerHTML = hist.slice(-3).map(x => `<div class="wq muted">${LAB.esc(x.q)}</div><div>${LAB.esc(x.a).replace(/\n/g, '<br>')}${x.did && x.did.length ? `<div class="msg did">⚡ ${x.did.map(LAB.esc).join(' · ')}</div>` : ''}</div>`).join(''); };
+    paint();
     el.querySelector('form').onsubmit = async e => {
-      e.preventDefault(); const inp = e.target.querySelector('input'), t = inp.value.trim(); if (!t) return; inp.value = ''; out.textContent = '…';
+      e.preventDefault(); const inp = e.target.querySelector('input'), t = inp.value.trim(); if (!t) return; inp.value = '';
+      log.insertAdjacentHTML('beforeend', `<div class="wq muted">${LAB.esc(t)}</div><div id="w-sauce-think">…</div>`);
       try {
-        const r = await post('/api/sauce/ask', { account_id: ctx.me && ctx.me.id, name: ctx.me && ctx.me.name, message: t, history: [] });
-        out.innerHTML = LAB.esc(r.reply).replace(/\n/g, '<br>') + (r.did && r.did.length ? `<div class="msg did">⚡ ${r.did.map(LAB.esc).join(' · ')}</div>` : '');
-      } catch { out.textContent = 'The Sauce is out of reach right now.'; }
+        const r = await post('/api/sauce/ask', { account_id: ctx.me && ctx.me.id, name: ctx.me && ctx.me.name, message: t, history: hist.slice(-3).flatMap(x => [{ role: 'user', text: x.q }, { role: 'assistant', text: x.a }]) });
+        hist = hist.concat([{ q: t, a: r.reply, did: r.did || [] }]).slice(-6); LAB.store.set('sauce_hist', hist); paint();
+      } catch { const th = el.querySelector('#w-sauce-think'); if (th) th.textContent = 'The Sauce is out of reach right now.'; }
     };
   } });
 

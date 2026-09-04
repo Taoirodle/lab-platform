@@ -67,10 +67,26 @@ LAB.register({ id: 'stats', label: 'Stats', icon: I.stats, order: 9,
       <div class="kpi"><span>Mostly</span><b>${topCat ? `<i style="background:${COLOR[topCat[0]] || COLOR.Other}"></i>${LAB.esc(topCat[0])}` : '—'}</b></div>`;
     el.appendChild(kp);
 
-    const c1 = LAB.el('div', 'card'); c1.innerHTML = '<h3>Last 14 days · active time by kind</h3><canvas class="chart" id="ch-days"></canvas><div class="legend" id="lg"></div>'; el.appendChild(c1);
+    const c1 = LAB.el('div', 'card'); c1.innerHTML = '<h3>Last 14 days · active time by kind <span class="muted">· tap a day</span></h3><canvas class="chart" id="ch-days"></canvas><div class="legend" id="lg"></div>'; el.appendChild(c1);
     const present = CATS.filter(c => days.some(d => d.cats[c.k]));
-    LAB.charts.stacked(c1.querySelector('#ch-days'), days.map((d, i) => ({ label: wd(d.d), values: d.cats, hot: i === days.length - 1 })), present.length ? present : CATS.slice(0, 1));
+    const dayCanvas = c1.querySelector('#ch-days');
+    LAB.charts.stacked(dayCanvas, days.map((d, i) => ({ label: wd(d.d), values: d.cats, hot: i === days.length - 1 })), present.length ? present : CATS.slice(0, 1));
     c1.querySelector('#lg').innerHTML = present.map(c => `<span><i style="background:${c.color}"></i>${c.k} · ${fmtMin(catWeek[c.k] || 0)} this week</span>`).join('');
+
+    // one day, minute by minute: runs of the same app collapse into blocks
+    const tl = LAB.el('div', 'card'); tl.innerHTML = '<h3 id="tl-h">Today · timeline</h3><canvas class="chart" id="ch-tl"></canvas><div id="tl-list"></div>'; el.appendChild(tl);
+    const showDay = async d => {
+      let day = null; try { day = await LAB.api(`/api/usage/day?device_id=${encodeURIComponent(LAB.telemetry.deviceId())}&date=${d}&tz=${encodeURIComponent(tz)}`); } catch {}
+      const isToday = d === new Date().toLocaleDateString('en-CA');
+      tl.querySelector('#tl-h').textContent = (isToday ? 'Today' : new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })) + ' · ' + fmtMin(day ? day.active_minutes : 0) + ' active';
+      const runs = (day && day.runs) || [];
+      const now = new Date(); LAB.charts.timeline(tl.querySelector('#ch-tl'), runs.map(r => ({ start: r.start, end: r.end, color: r.idle ? '#3a3f55' : (COLOR[r.category] || COLOR.Other), dim: r.idle })), { now: isToday ? now.getHours() * 60 + now.getMinutes() : null });
+      const big = runs.filter(r => !r.idle && r.mins >= 5).slice(-12).reverse();
+      tl.querySelector('#tl-list').innerHTML = big.length ? big.map(r => `<div class="prow"><span><i class="dot" style="background:${COLOR[r.category] || COLOR.Other}"></i> ${LAB.esc(r.app || 'something')}</span><span class="muted">${r.start}–${r.end} · ${fmtMin(r.mins)}</span></div>`).join('') : `<div class="muted">${runs.length ? 'Only short bursts that day.' : 'Nothing measured that day.'}</div>`;
+    };
+    dayCanvas.style.cursor = 'pointer';
+    dayCanvas.onclick = e => { const rect = dayCanvas.getBoundingClientRect(); const x = e.clientX - rect.left, padL = 36, iw = rect.width - padL - 8; const i = Math.floor((x - padL) / (iw / days.length)); if (i >= 0 && i < days.length) showDay(days[i].d); };
+    showDay(days[days.length - 1].d);
 
     if (sum.top_apps && sum.top_apps.length) {
       const c2 = LAB.el('div', 'card'); c2.innerHTML = '<h3>Top apps · 7 days</h3><canvas class="chart" id="ch-apps"></canvas>'; el.appendChild(c2);

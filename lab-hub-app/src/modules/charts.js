@@ -64,6 +64,22 @@ LAB.charts = {
     return s + '…';
   },
 
+  /// runs: [{start:'HH:MM', end:'HH:MM', color}] — one day laid out left to right
+  timeline(canvas, runs, opts = {}) {
+    const { g, w, txt2, stroke } = this.prep(canvas, 54);
+    const mins = s => { const [h, m] = String(s).split(':').map(Number); return h * 60 + m; };
+    g.fillStyle = 'rgba(255,255,255,.05)'; this.rr(g, 0, 0, w, 30, 6); g.fill();
+    for (const r of runs) {
+      const a = mins(r.start), b = Math.max(mins(r.end), a + 1);
+      g.fillStyle = r.color; g.globalAlpha = r.dim ? .35 : 1;
+      g.fillRect((a / 1440) * w, 0, Math.max(1.5, ((b - a) / 1440) * w), 30); g.globalAlpha = 1;
+    }
+    g.strokeStyle = stroke; for (let h = 0; h <= 24; h += 6) { const x = (h / 24) * w; g.beginPath(); g.moveTo(x + .5, 30); g.lineTo(x + .5, 36); g.stroke(); }
+    g.fillStyle = txt2; g.textBaseline = 'top';
+    for (let h = 0; h <= 24; h += 6) { g.textAlign = h === 0 ? 'left' : h === 24 ? 'right' : 'center'; g.fillText(String(h).padStart(2, '0') + ':00', (h / 24) * w, 39); }
+    if (opts.now != null) { const x = (opts.now / 1440) * w; g.fillStyle = this.cssVar('--txt', '#fff'); g.fillRect(x - 1, 0, 2, 30); }
+  },
+
   /// hours: number[24] — a 24-cell heat strip
   heat(canvas, hours, color) {
     const { g, w, txt2 } = this.prep(canvas, 46);

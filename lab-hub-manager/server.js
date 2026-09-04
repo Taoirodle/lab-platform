@@ -303,6 +303,10 @@ app.get('/api/usage/summary', wrap(async (req, res) => {
   if (!req.query.device_id) return res.status(400).json({ error: 'device_id required' });
   res.json(await db.usage.summary({ device_id: String(req.query.device_id).slice(0, 80), days: req.query.days, tz: req.query.tz }));
 }));
+app.get('/api/usage/day', wrap(async (req, res) => {
+  if (!req.query.device_id) return res.status(400).json({ error: 'device_id required' });
+  res.json(await db.usage.day({ device_id: String(req.query.device_id).slice(0, 80), date: req.query.date, tz: req.query.tz }));
+}));
 app.get('/api/usage/devices', wrap(async (req, res) => res.json(await db.usage.devices())));   // admin overview (home-network only)
 // "Delete my data": the app wipes everything its device ever sent
 app.delete('/api/usage/device/:id', wrap(async (req, res) => {

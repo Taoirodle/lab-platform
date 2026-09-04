@@ -76,14 +76,24 @@
 - [x] Admin "Builders · generations" desk: waiting-for-you list (publish / reject / restore), recent, published counts, Skin/Widget/Page "now" buttons.
 - [x] Web hub "Get the App": Download badge shows the version; the install modal shows version, date and notes.
 - [x] Kiosk: "Coming up · next 7 days" (merged calendar) + "This week · who's sharing" panels.
-- [ ] Stats: click a day → that day's timeline (runs of app/kind) from a new `/api/usage/day?device_id&date&tz`.
-- [ ] Windows wizard: after download, offer to launch the installer.
-- [ ] Sauce quick-ask widget history (last 3 exchanges) persisted per install.
+- [x] Stats: tap a day → timeline strip (runs of app / idle, now-marker) + longest runs list, from `/api/usage/day` (verified: minutes collapse into runs, gaps split).
+- [x] Windows wizard offers to run the installer after download.
+- [x] Sauce widget keeps the last exchanges (per install) and sends them as history.
+
+### 12 · Wave three (pick top-down)
+- [ ] Home / away: the app pings the home address, then the Tailscale "away" address (Settings), and picks what answers; footer shows home / away / offline; re-checks while offline.
+- [ ] Offline-tolerant reads: GET responses cached per install; when the server is unreachable, pages show the last-seen data with an "offline · as of HH:MM" bar; writes fail honestly.
+- [ ] Automations page → real device onboarding: add WLED / WiZ / push device (name, room, driver, address), probe, remove; save a scene from the current room states.
+- [ ] Web hub: Ask The Sauce card (phones) using `/api/sauce/ask`.
+- [ ] Manager hygiene: nightly purge of `usage_samples` older than 90 days (setting), audit row.
+- [ ] Weekly digest notification (Sunday 18:00 local): this week's active time, top kind, streak.
+- [ ] Command palette (Ctrl+K): jump to a page, ask The Sauce, run a scene.
 
 ---
 
 ## Log
 - 2026-09-04 00:55 — Run started. Cron installed. Plan written. Repo public; CI re-fired on `app-v0.1.0`.
+- 2026-09-04 16:58 — **0.2.2 released** (day timeline, family.ics subscribe card, Sauce widget history; web: admin builders desk, hub version, kiosk panels; wizard launches installer). Browser pass clean on all 10 pages; exe verified; installer + version.json published; tag `app-v0.2.2`. Wave 11 complete; wave 12 defined. (Turn gap 11:00→16:54: cron fires queued while the previous turn ran.)
 - 2026-09-04 10:40 — Wave 11: Sauce context + todo_done + family.ics shipped and verified live (M-000023). CI found blocked at account level (zero-step jobs) — needs Tao.
 - 2026-09-04 10:27 — **0.2.1 released** (tray/close-to-tray/reminders, prefs sync, family This-week, Mac arch, builders `page` kind with anti-hallucination sanitiser; the Dev Team autonomously shipped a "Handbook" page). Manager M-000023. Windows installer + version.json published; tag `app-v0.2.1` pushed. Chunks 1–10 complete; section 11 is the next wave.
 - 2026-09-04 09:55 — 0.2.0 tagged (`1e88816`, CI + GitHub Release + server sync loop). Then tray/close-to-tray/notifications, prefs sync (M-000022), family "This week", Mac arch pick, LICENSE — all verified; bumping to 0.2.1 for a consistent tag.
