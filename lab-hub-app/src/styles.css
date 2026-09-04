@@ -218,6 +218,13 @@ html.fx-dense .phead h1{font-size:22px}
 .lookrow .muted{margin-top:2px}
 .storemain h4{grid-column:1/-1;font-family:var(--mono);font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--txt2);margin:6px 0 -4px}
 .storemain .muted.full{grid-column:1/-1}
+/* for you */
+.gamegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.game{background:var(--panel2);border:1px solid var(--stroke);border-radius:12px;padding:11px 12px;min-width:0}
+.game b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.game span{display:block;font-size:11px;color:var(--txt2);margin-top:3px;font-family:var(--mono)}
+.focusrow{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.focusrow .big{font-family:var(--mono);font-size:34px;letter-spacing:.02em}
 /* skins */
 .skins{display:flex;flex-wrap:wrap;gap:8px}
 .skin{border:1px solid var(--stroke);background:var(--panel);color:var(--txt);border-radius:10px;padding:8px 13px;cursor:pointer;font:inherit;font-size:12px;font-weight:600;position:relative;padding-left:26px}

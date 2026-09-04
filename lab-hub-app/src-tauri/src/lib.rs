@@ -10,6 +10,7 @@
 // ============================================================
 use serde::Serialize;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use sysinfo::{Disks, Pid, ProcessesToUpdate, System};
 
@@ -351,12 +352,195 @@ fn usage_snapshot(state: tauri::State<'_, Telemetry>) -> Snapshot {
     }
 }
 
+// ---------------------------------------------------------------- "For you": library + recent files
+#[derive(Serialize)]
+struct Game {
+    name: String,
+    source: &'static str,
+    app_id: String,
+    size_gb: f32,
+    install_dir: String,
+    last_played: u64,
+}
+
+/// Valve's VDF/ACF is just `"key"  "value"` lines — split on quotes.
+fn vdf_kv(line: &str) -> Option<(String, String)> {
+    let parts: Vec<&str> = line.split('"').collect();
+    if parts.len() >= 4 { Some((parts[1].to_string(), parts[3].to_string())) } else { None }
+}
+
+fn steam_roots() -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = Vec::new();
+    #[cfg(windows)]
+    {
+        if let Some(pf) = std::env::var_os("ProgramFiles(x86)") { v.push(PathBuf::from(pf).join("Steam")); }
+        if let Some(pf) = std::env::var_os("ProgramFiles") { v.push(PathBuf::from(pf).join("Steam")); }
+        for d in ["C:\\Steam", "D:\\Steam", "E:\\Steam", "C:\\SteamLibrary", "D:\\SteamLibrary", "E:\\SteamLibrary", "F:\\SteamLibrary"] { v.push(PathBuf::from(d)); }
+    }
+    #[cfg(target_os = "macos")]
+    if let Some(h) = std::env::var_os("HOME") { v.push(PathBuf::from(h).join("Library").join("Application Support").join("Steam")); }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    if let Some(h) = std::env::var_os("HOME") { let h = PathBuf::from(h); v.push(h.join(".steam").join("steam")); v.push(h.join(".local").join("share").join("Steam")); }
+    v.into_iter().filter(|p| p.join("steamapps").is_dir()).collect()
+}
+
+fn steam_games() -> Vec<Game> {
+    let mut libs: Vec<PathBuf> = Vec::new();
+    for root in steam_roots() {
+        libs.push(root.clone());
+        if let Ok(s) = std::fs::read_to_string(root.join("steamapps").join("libraryfolders.vdf")) {
+            for line in s.lines() {
+                if let Some((k, val)) = vdf_kv(line) { if k == "path" { libs.push(PathBuf::from(val.replace("\\\\", "\\"))); } }
+            }
+        }
+    }
+    libs.sort();
+    libs.dedup();
+    let mut out = Vec::new();
+    for lib in libs {
+        let Ok(rd) = std::fs::read_dir(lib.join("steamapps")) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            let fname = p.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
+            if !(fname.starts_with("appmanifest_") && fname.ends_with(".acf")) { continue; }
+            let Ok(s) = std::fs::read_to_string(&p) else { continue };
+            let (mut name, mut appid, mut size, mut dir, mut last) = (String::new(), String::new(), 0u64, String::new(), 0u64);
+            for line in s.lines() {
+                if let Some((k, v)) = vdf_kv(line) {
+                    match k.as_str() {
+                        "name" => name = v, "appid" => appid = v, "installdir" => dir = v,
+                        "SizeOnDisk" => size = v.parse().unwrap_or(0), "LastPlayed" => last = v.parse().unwrap_or(0),
+                        _ => {}
+                    }
+                }
+            }
+            if name.is_empty() || name.starts_with("Steamworks Common") || name.contains("Redistributable") || name.starts_with("Steam Linux Runtime") || name.starts_with("Proton") { continue; }
+            let install_dir = lib.join("steamapps").join("common").join(&dir).to_string_lossy().to_string();
+            out.push(Game { name, source: "Steam", app_id: appid, size_gb: (size as f32 / 1_073_741_824.0 * 10.0).round() / 10.0, install_dir, last_played: last });
+        }
+    }
+    out
+}
+
+fn epic_games() -> Vec<Game> {
+    let mut out = Vec::new();
+    #[cfg(windows)]
+    let dir = std::env::var_os("ProgramData").map(|p| PathBuf::from(p).join("Epic").join("EpicGamesLauncher").join("Data").join("Manifests"));
+    #[cfg(target_os = "macos")]
+    let dir = std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library").join("Application Support").join("Epic").join("EpicGamesLauncher").join("Data").join("Manifests"));
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let dir: Option<PathBuf> = None;
+    let Some(dir) = dir else { return out };
+    let Ok(rd) = std::fs::read_dir(dir) else { return out };
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.extension().map(|x| x != "item").unwrap_or(true) { continue; }
+        let Ok(s) = std::fs::read_to_string(&p) else { continue };
+        let Ok(j) = serde_json::from_str::<serde_json::Value>(&s) else { continue };
+        let name = j["DisplayName"].as_str().unwrap_or("").to_string();
+        if name.is_empty() { continue; }
+        out.push(Game {
+            name, source: "Epic", app_id: j["AppName"].as_str().unwrap_or("").to_string(),
+            size_gb: (j["InstallSize"].as_f64().unwrap_or(0.0) as f32 / 1_073_741_824.0 * 10.0).round() / 10.0,
+            install_dir: j["InstallLocation"].as_str().unwrap_or("").to_string(), last_played: 0,
+        });
+    }
+    out
+}
+
+/// Steam (all library folders) + Epic, most recently played first.
+#[tauri::command]
+fn game_library() -> Vec<Game> {
+    let mut g = steam_games();
+    g.extend(epic_games());
+    g.sort_by(|a, b| b.last_played.cmp(&a.last_played).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    g
+}
+
+#[derive(Serialize)]
+struct RecentFile {
+    name: String,
+    ext: String,
+    modified: u64,
+}
+
+/// What you were working on: Windows' Recent folder (shortcut names ARE the
+/// file names), GNOME/KDE's recently-used.xbel on Linux. macOS keeps this in
+/// per-app plists, so it stays empty there for now — honestly.
+#[tauri::command]
+fn recent_files() -> Vec<RecentFile> {
+    let mut out: Vec<RecentFile> = Vec::new();
+    #[cfg(windows)]
+    if let Some(ad) = std::env::var_os("APPDATA") {
+        if let Ok(rd) = std::fs::read_dir(PathBuf::from(ad).join("Microsoft").join("Windows").join("Recent")) {
+            for e in rd.flatten() {
+                let fname = e.file_name().to_string_lossy().to_string();
+                if !fname.to_lowercase().ends_with(".lnk") { continue; }
+                let name = fname[..fname.len() - 4].to_string();
+                if name.eq_ignore_ascii_case("desktop.ini") || !name.contains('.') { continue; }
+                let modified = e.metadata().ok().and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+                let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
+                out.push(RecentFile { name, ext, modified });
+            }
+        }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    if let Some(h) = std::env::var_os("HOME") {
+        if let Ok(s) = std::fs::read_to_string(PathBuf::from(h).join(".local").join("share").join("recently-used.xbel")) {
+            for chunk in s.split("<bookmark ").skip(1) {
+                let href = chunk.split("href=\"").nth(1).and_then(|x| x.split('"').next()).unwrap_or("");
+                let name = href.rsplit('/').next().unwrap_or("").replace("%20", " ");
+                if name.is_empty() || !name.contains('.') { continue; }
+                let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
+                out.push(RecentFile { name, ext, modified: 0 });
+            }
+        }
+    }
+    out.sort_by(|a, b| b.modified.cmp(&a.modified));
+    out.truncate(25);
+    out
+}
+
+// ---------------------------------------------------------------- settings helpers
+use tauri_plugin_autostart::ManagerExt;
+
+/// Is "start with your PC" on? (None if the platform can't say.)
+#[tauri::command]
+fn autostart_enabled(app: tauri::AppHandle) -> Option<bool> {
+    app.autolaunch().is_enabled().ok()
+}
+
+#[tauri::command]
+fn autostart_set(app: tauri::AppHandle, enable: bool) -> Result<bool, String> {
+    let al = app.autolaunch();
+    (if enable { al.enable() } else { al.disable() }).map_err(|e| e.to_string())?;
+    al.is_enabled().map_err(|e| e.to_string())
+}
+
+/// Write a text file into the user's Downloads folder (data export). Returns the path.
+#[tauri::command]
+fn save_to_downloads(name: String, content: String) -> Result<String, String> {
+    let safe: String = name.chars().filter(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_')).collect();
+    let safe = if safe.is_empty() { "lab-export.json".to_string() } else { safe };
+    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).ok_or("no home folder")?;
+    let dir = PathBuf::from(home).join("Downloads");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(safe);
+    std::fs::write(&path, content).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .manage(Telemetry(Mutex::new(System::new_all())))
-        .invoke_handler(tauri::generate_handler![device_info, server_url, profile_hint, quick_load, usage_snapshot])
+        .invoke_handler(tauri::generate_handler![
+            device_info, server_url, profile_hint, quick_load, usage_snapshot, game_library, recent_files,
+            autostart_enabled, autostart_set, save_to_downloads
+        ])
         .run(tauri::generate_context!())
         .expect("error while running L.A.B Hub");
 }

@@ -87,15 +87,7 @@ LAB.register({ id: 'automations', label: 'Automations', icon: I.bolt, order: 6,
   }
 });
 
-// 7 · Personalized tab (name + content from the wizard) ----------------------
-LAB.register({ id: 'personalized', label: 'For you', icon: I.star, order: 7,
-  dynLabel(ctx) { return (ctx.profile && ctx.profile.personalization && ctx.profile.personalization.personalizedTab) || 'For you'; },
-  render(el, ctx) {
-    const p = (ctx.profile && ctx.profile.personalization) || {};
-    el.innerHTML = head(p.personalizedTab || 'For you', p.report || 'Run the setup wizard and this tab shapes itself around how you use your PC.');
-    el.appendChild(LAB.el('div', 'card', `<h3>Tuned for a ${LAB.esc(p.archetype || '—')} machine</h3>` + soon('your archetype-specific tools + shortcuts')));
-  }
-});
+// 7 · For you — lives in modules/foryou.js (library, recent files, focus, studio)
 
 // 8 · Device (native probe) --------------------------------------------------
 LAB.register({ id: 'device', label: 'Device', icon: I.device, order: 8,
@@ -115,26 +107,4 @@ LAB.register({ id: 'device', label: 'Device', icon: I.device, order: 8,
 
 // 9 · Stats — lives in modules/stats.js (real data from the native sampler) --
 
-// 10 · Settings --------------------------------------------------------------
-LAB.register({ id: 'settings', label: 'Settings', icon: I.cog, order: 10,
-  async render(el, ctx) {
-    el.innerHTML = head('Settings', 'Your app, your way.');
-    const c = LAB.el('div', 'card'); c.innerHTML = `
-      <div class="prow"><span>Server</span><b>${LAB.esc(ctx.server)}</b></div>
-      <div class="prow"><span>Runtime</span><b>${LAB.isNative() ? 'Native (Tauri)' : 'Browser preview'}</b></div>
-      <div class="prow"><span>Version</span><b>v${window.LAB_CONFIG.APP_VERSION}</b></div>`;
-    el.appendChild(c);
-    if (LAB.isNative()) {
-      const on = LAB.store.get('telemetry') !== false;
-      const tele = LAB.el('div', 'card');
-      tele.innerHTML = `<h3>Usage measuring</h3><div class="prow"><span>Sample what's in front once a minute — it powers Stats. Window titles never leave this PC.</span><button class="btn ${on ? 'pri' : ''}" id="t-tog">${on ? 'On' : 'Off'}</button></div>`;
-      tele.querySelector('#t-tog').onclick = () => { const next = !on; LAB.store.set('telemetry', next); if (next) LAB.telemetry.start(); else LAB.telemetry.stop(); LAB.go('settings'); };
-      el.appendChild(tele);
-    }
-    const th = LAB.el('div', 'card'); th.innerHTML = '<h3>Theme</h3><div class="skins" id="skl"></div>'; el.appendChild(th);
-    const g = await LAB.api('/api/hub/generations').catch(() => ({ skins: [] }));
-    const cur = LAB.store.get('skin');
-    th.querySelector('#skl').innerHTML = `<button class="skin ${!cur ? 'on' : ''}" data-s="default">Default</button>` + (g.skins || []).map(s => `<button class="skin ${cur === s.id ? 'on' : ''}" data-s="${s.id}" style="--sw:${(s.payload && s.payload.vars && s.payload.vars['--a1']) || '#888'}">${LAB.esc(s.title)}</button>`).join('');
-    th.querySelectorAll('.skin').forEach(b => b.onclick = () => { const id = b.dataset.s; if (id === 'default') { LAB.store.del('skin'); LAB.store.del('skinvars'); LAB.applySkin(null); } else { const s = (g.skins || []).find(x => x.id === id); if (s) { LAB.store.set('skin', id); LAB.store.set('skinvars', s.payload.vars); LAB.applySkin(s.payload.vars); } } LAB.go('settings'); });
-  }
-});
+// 10 · Settings — lives in modules/settings.js (server, measuring, autostart, updates, data, theme)

@@ -278,13 +278,15 @@
 
   // ---- shared calendar ----
   const MON=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  // merged view: family events + every calendar someone linked and shared with the family
   async function loadEvents(){
-    const list=await api('/api/shared/events').catch(()=>[]);
-    $('ev-list').innerHTML=list.length?list.map(e=>{const d=new Date(e.day+'T00:00');return `<div class="ev" data-id="${e.id}">
+    const from=new Date(Date.now()-86400000).toLocaleDateString('en-CA'), to=new Date(Date.now()+60*86400000).toLocaleDateString('en-CA');
+    const list=await api(`/api/calendar/events?from=${from}&to=${to}`+(me?'&account_id='+encodeURIComponent(me.id):'')).catch(()=>[]);
+    $('ev-list').innerHTML=list.length?list.slice(0,40).map(e=>{const d=new Date(e.day+'T00:00');const fam=e.source==='family';return `<div class="ev" data-id="${esc(e.id)}">
       <div class="date"><div class="d">${d.getDate()}</div><div class="m">${MON[d.getMonth()]}</div></div>
-      <div style="flex:1"><div class="ttl">${esc(e.title)}</div>${e.by_name?`<div class="tm">${esc(e.by_name)}</div>`:''}</div>
-      <div class="del" data-act="del">×</div></div>`;}).join(''):'<div class="empty">No upcoming events. Add one above.</div>';
-    $('ev-list').querySelectorAll('[data-act=del]').forEach(b=>b.onclick=async()=>{ await api('/api/shared/events/'+b.closest('.ev').dataset.id,{method:'DELETE'}); loadEvents(); });
+      <div style="flex:1"><div class="ttl">${esc(e.title)}</div><div class="tm">${e.all_day?'all day':esc(e.at_time||'')}${fam?(e.by?' · '+esc(e.by):''):' · <i style="display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:-1px;background:'+esc(e.color||'#6fb4ff')+'"></i> '+esc(e.feed||'linked calendar')}</div></div>
+      ${fam?'<div class="del" data-act="del">×</div>':''}</div>`;}).join(''):'<div class="empty">No upcoming events. Add one above — or link your Google / Apple / Outlook calendar in the app and share it here.</div>';
+    $('ev-list').querySelectorAll('[data-act=del]').forEach(b=>b.onclick=async()=>{ const id=b.closest('.ev').dataset.id.replace(/^fam:/,''); await api('/api/shared/events/'+id,{method:'DELETE'}); loadEvents(); });
   }
   $('ev-add').onclick=async()=>{ const title=$('ev-title').value.trim(),day=$('ev-day').value; if(!title||!day)return;
     $('ev-title').value=''; await api('/api/shared/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,day,by:me&&me.name})}); loadEvents(); };

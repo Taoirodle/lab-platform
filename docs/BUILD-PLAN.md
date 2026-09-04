@@ -34,33 +34,47 @@
 - [x] App `modules/calendar.js`: month grid (Mon-start, chips by feed colour) + day agenda, add family event, link-a-calendar with per-provider steps (Google/Apple/Outlook/Other), sync/remove, share-with-family toggle. "Coming up" widget reads the merged feed.
 
 ### 4 · Profile
-- [ ] Server: accounts get `avatar` (emoji+colour), `privacy` JSON (share_stats, share_calendar), `PATCH /api/accounts/:id`, `GET /api/accounts/:id/devices`.
-- [ ] App: avatar picker, privacy toggles, linked devices, sign in / switch account / sign out.
+- [x] Server M-000021: `accounts.avatar/privacy`, `GET/PATCH /api/accounts/:id` (PIN-confirmed; new_pin validated), `GET /api/accounts/:id/devices` (+ wizard profiles), `POST /api/usage/link` (claims the device + earlier anonymous samples). All smoke-tested.
+- [x] App `modules/profile.js`: log in / create (name+PIN), identity card, avatar (emoji+colour), family-visibility toggles, PIN-confirmed save, linked devices, change PIN, sign out. Sign-in links this PC.
+- [x] Wizard → app handoff: wizards write a `profile.json` note (Win/Mac/Linux paths); Rust `profile_hint` reads it; boot() personalises + signs in from it. (Compiled; end-to-end needs a real wizard run.) Mac/Linux wizards' account-id parsing fixed (ids are quoted).
 
 ### 5 · App Store that installs things
-- [ ] Widgets install into the Dashboard grid (uses `installs` table so it syncs per account).
-- [ ] Effects = real CSS toggles (glass panels, ambient glow, reduce motion). Overhauls = real layout variants (compact rail, top bar).
-- [ ] Packaged apps: "Install" records + opens; honest "coming from the builders" state otherwise.
+- [x] Widgets: on/off into the Dashboard from the store (per-install layout; generated widgets included).
+- [x] Effects (glass, glow, calm, dense) + overhauls (classic / compact rail / top bar) are real, instant, persisted (`LAB.look`).
+- [x] Packaged apps: Install/Remove via `/api/store/install`; Open where a page exists (Sauce, Rooms→Automations, Family Board→Calendar, Pulse→Stats); "Not built yet" otherwise. Details panel with catalog preview.
+- [ ] Later: server-side per-account widget layout sync (currently per install).
 
 ### 6 · For you (personalized tab) with real content
-- [ ] Rust `game_library` (Steam `libraryfolders.vdf` + `appmanifest_*.acf`; Epic manifests) and `recent_files` (Windows Recent).
-- [ ] Gaming → library + playtime from stats; Work → recent docs + focus timer + today; Creativity → project folders + recent creative files; Multitasking → blend.
+- [x] Rust `game_library` (Steam: all library folders via `libraryfolders.vdf` + `appmanifest_*.acf`, runtime/redist filtered; Epic `.item` manifests) and `recent_files` (Windows Recent shortcuts; Linux `recently-used.xbel`; macOS honest-empty).
+- [x] `modules/foryou.js`: Gaming → library + 30-day playtime + most-played; Work → recent docs + focus timer; Creativity → recent creative files + tools used; blend when unknown/multitask.
 
 ### 7 · Settings, native niceties, updates
-- [ ] Server URL override (persisted), telemetry opt-out, data export/delete.
-- [ ] Autostart (tauri-plugin-autostart), tray + minimise-to-tray, notifications (tauri-plugin-notification) for family events/to-dos.
-- [ ] `GET /api/app/version` + in-app "update available" → download link.
+- [x] `modules/settings.js`: server override (store > LAB_SERVER env > default), measuring on/off, data export (Rust `save_to_downloads` → ~/Downloads JSON; clipboard fallback), delete-my-data (`DELETE /api/usage/device/:id` + local reset), theme.
+- [x] Autostart via tauri-plugin-autostart (Rust-wrapped `autostart_enabled/_set`, no extra capability). Tray + notifications deferred (no tray = nothing to reopen a hidden window from; do together later).
+- [x] `GET /api/app/version` reads `app-builds/version.json`; Settings shows "vX is available → Get the update" (opens `/app/download/<os>` via shell plugin). version.json written on publish.
 
 ### 8 · Web hub + Admin parity
-- [ ] Admin: devices + stats overview (privacy-respecting), app version fleet view.
-- [ ] Web hub: calendar feeds visible, dashboard parity where sensible.
+- [x] Admin: "Hub app · devices" card (name, OS, account, last seen, active/7d — aggregate only) from `/api/usage/devices`, refreshed every 30 s.
+- [x] Web hub: shared calendar now shows the merged view (family + linked calendars shared with the family, colour dots, all-day/time), family events still add/delete.
+- [ ] Later: web hub shows per-member stats when `privacy.share_stats` is on.
 
 ### 9 · Release
-- [ ] Bump to 0.2.0 (Cargo.toml, tauri.conf.json, package.json, config.js), tag `app-v0.2.0`, push → CI builds Win/Mac/Linux; copy Windows build into server `app-builds/`.
+- [x] Bumped to 0.2.0 everywhere; Windows 0.2.0 installer built locally, launch-verified, published to server `app-builds/` + `version.json`.
+- [x] CI: `release` job publishes all installers to a GitHub Release on `app-v*` tags; server `POST /api/app/sync` (+ every 6 h) pulls them into `app-builds/` with canonical names and writes `version.json` from the tag. `/app/download/:os` now prefers the canonical extension (was serving the .deb for Linux by alphabetical accident).
+- [ ] After CI: confirm the release exists, run `/api/app/sync`, check `/api/app/targets` shows mac + linux builds.
+
+### 10 · Next (in priority order)
+- [ ] Tray icon + minimise-to-tray + notifications (family events / to-dos) — one native chunk.
+- [ ] Per-account widget layout + looks sync (server `account_prefs`), so a new install of yours looks like yours.
+- [ ] Web hub: per-member stats card when `privacy.share_stats` is on.
+- [ ] Builders: a `page` artifact kind (structured page definitions rendered by trusted templates) so the AI team can ship whole tabs.
+- [ ] Wizard: pick Mac arch (arm64/x64) for `/app/download/mac`.
 
 ---
 
 ## Log
 - 2026-09-04 00:55 — Run started. Cron installed. Plan written. Repo public; CI re-fired on `app-v0.1.0`.
+- 2026-09-04 03:45 — Chunks 6+7+8 built + verified: all 10 pages driven in a real browser with zero runtime errors; autostart build launch-verified; web hub + admin pages deployed. Versions bumped to 0.2.0; release build running; `docs/13-hub-app.md` written.
+- 2026-09-04 03:05 — Chunks 4+5 shipped (`4b55d26`, `4b1e376`); installer republished to server app-builds; Chunk 6 written, build pending.
 - 2026-09-04 02:20 — Chunks 2+3 built + verified (server deployed M-000020; parser unit-tested; real ICS feed linked; exe telemetry end-to-end). withGlobalTauri bug found + fixed.
 - 2026-09-04 01:40 — Chunk 1 shipped (`fbae844`): server deployed + smoke-tested (ingest idempotent, summary tz-correct, idle excluded); `cargo check` + release build green; exe launch-verified (7.5 MB, 38 MB RSS).

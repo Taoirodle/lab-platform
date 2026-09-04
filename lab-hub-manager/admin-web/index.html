@@ -238,6 +238,8 @@
     <div>
       <div class="lbl">Fleet</div>
       <div class="card" id="fleet"><div class="empty">Loading…</div></div>
+      <div class="lbl">Hub app · devices</div>
+      <div class="card" id="hubdev"><div class="empty">Loading…</div></div>
     </div>
   </div>
 </main>
@@ -397,11 +399,22 @@
       <span class="st ${d.status}">${esc(d.status)}</span></div>`).join('') : '<div class="empty">No devices enrolled.</div>';
   }
 
+  // the personal app registers each install as a device; only aggregate activity is shown (no titles, no apps)
+  async function loadHubDevices(){
+    const list = await api('/api/usage/devices').catch(()=>[]);
+    const ago = t => { if(!t) return 'never'; const s=(Date.now()-new Date(t))/1000; return s<120?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':Math.round(s/86400)+' d ago'; };
+    const hm = m => m>=60?Math.floor(m/60)+'h '+String(m%60).padStart(2,'0')+'m':m+'m';
+    $('hubdev').innerHTML = list.length ? list.map(d=>`
+      <div class="dev"><div><b>${esc(d.name||d.id.slice(0,8))}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(d.os||'—')} · ${d.account?esc(d.account):'not signed in'} · seen ${ago(d.last_seen)}</span></div>
+      <span style="font-size:12px;color:var(--ink2)">${hm(d.active_7d||0)} active / 7d</span></div>`).join('') : '<div class="empty">No app installs have reported yet.</div>';
+  }
   function startPortal(){
     boot = LabLoader.overlay({ label: 'L.A.B Admin' });
     connect();
     initNeural();
+    loadHubDevices();
     setInterval(()=>{ loadApprovals(); loadFleet(); }, 5000);
+    setInterval(loadHubDevices, 30000);
     setInterval(()=>{ loadAnalytics(false); }, 20000);
   }
 

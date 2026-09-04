@@ -18,21 +18,25 @@ The **web** Hub (served from the server at `/hub`) is the *shared family surface
 ```
 lab-hub-app/
   src/                 the front-end (web tech, runs in the native webview)
-    index.html         shell
-    app.js             core: page registry + router + native bridge
-    pages.js           the 10 page modules (each self-registers)
+    index.html         shell — loads app.js, pages.js, then every module
+    app.js             core: page registry + router + native bridge + looks
+    pages.js           icons/helpers + The Sauce, Automations, Device pages
+    modules/           one file per feature, each registers itself:
+      telemetry.js  charts.js  stats.js  widgets.js  dashboard.js
+      calendar.js  profile.js  appstore.js  foryou.js  settings.js
     config.js  styles.css
   src-tauri/           the native shell (Rust)
-    Cargo.toml  tauri.conf.json  build.rs
-    src/main.rs  src/lib.rs       native commands: device_info, server_url
+    Cargo.toml  tauri.conf.json (withGlobalTauri!)  build.rs
+    src/lib.rs         native commands: device_info, quick_load, usage_snapshot,
+                       game_library, recent_files, profile_hint, autostart_*, save_to_downloads
     capabilities/  icons/
 ```
 
-**Adding a page = registering one module object** in `pages.js` (or its own file):
+**Adding a page = registering one module object** in its own file under `modules/`:
 ```js
 LAB.register({ id:'notes', label:'Notes', icon:'<svg…>', order:11, render(el, ctx){ … } });
 ```
-Nothing else changes — the sidebar and router build themselves from the registry. Pages can gate on the user's archetype via `show(ctx)` and rename via `dynLabel(ctx)` (the "Stats" tab becomes "Game stats" / "Creativity stats" automatically). The 10 slots are laid out; content is deliberately light where noted (`soon()`), ready to flesh out.
+Nothing else changes — the sidebar and router build themselves from the registry. Registering an existing `id` replaces it. Pages can gate on the user's archetype via `show(ctx)` and rename via `dynLabel(ctx)` (the "Stats" tab becomes "Game stats" / "Creativity stats" automatically). Widgets work the same way (`LAB.widgets.register`). Full architecture, the telemetry privacy model, calendar feeds and the release steps: `../docs/13-hub-app.md`.
 
 ## Build it
 

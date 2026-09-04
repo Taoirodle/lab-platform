@@ -39,7 +39,7 @@ app.use(express.json());
 const viaTunnel = req => !!(req.headers['cf-connecting-ip'] || req.headers['cf-ray'] || req.headers['x-forwarded-host']);
 const SENSITIVE = [
   /^\/$/, /^\/admin(\/|$)/, /^\/install(\/|$)/, /^\/showcase(\/|$)/,
-  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/devices)/
+  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/devices|app\/sync)/
 ];
 app.use(async (req, res, next) => {
   if (!viaTunnel(req)) return next();                         // on the home network → trusted
@@ -208,15 +208,52 @@ const OS_META = {
   mac: { label: 'macOS', ext: 'app', wizard: 'lab-setup-macos.sh', mime: 'application/x-sh' },
   linux: { label: 'Linux', ext: 'AppImage', wizard: 'lab-setup-linux.sh', mime: 'application/x-sh' }
 };
+// which file in app-builds serves an OS: the canonical extension wins, then anything named after the OS
+const buildFor = (files, os) => { const m = OS_META[os]; return files.find(f => f.toLowerCase().endsWith('.' + m.ext.toLowerCase())) || files.find(f => f.toLowerCase().includes(os)) || null; };
 app.get('/api/app/targets', wrap(async (req, res) => {
-  // report which native builds actually exist yet (drop compiled binaries in ./app-builds)
+  // report which native builds actually exist yet (CI releases sync into ./app-builds)
   const dir = path.join(__dirname, 'app-builds');
-  let files = []; try { files = require('fs').readdirSync(dir); } catch {}
-  res.json(Object.entries(OS_META).map(([os, m]) => ({
-    os, label: m.label,
-    build: files.find(f => f.toLowerCase().includes(os) || f.endsWith('.' + m.ext)) || null,
-    wizard: '/app/wizard/' + os
-  })));
+  let files = []; try { files = require('fs').readdirSync(dir).filter(f => f !== 'version.json'); } catch {}
+  res.json(Object.entries(OS_META).map(([os, m]) => ({ os, label: m.label, build: buildFor(files, os), wizard: '/app/wizard/' + os })));
+}));
+
+// ---- GitHub Releases → app-builds. The repo is public, so no token is needed. ----
+const GH_REPO = process.env.LAB_GH_REPO || 'Taoirodle/lab-platform';
+const ASSET_MAP = [
+  [/-setup\.exe$/i, 'LAB-Hub-Setup-win-x64.exe', 'win'],
+  [/aarch64.*\.dmg$|arm64.*\.dmg$/i, 'LAB-Hub-mac-arm64.dmg', 'mac'],
+  [/x64.*\.dmg$|x86_64.*\.dmg$/i, 'LAB-Hub-mac-x64.dmg', 'mac-x64'],
+  [/\.AppImage$/i, 'LAB-Hub-linux-x86_64.AppImage', 'linux'],
+  [/\.deb$/i, 'LAB-Hub-linux-amd64.deb', 'linux-deb'],
+  [/\.rpm$/i, 'LAB-Hub-linux-x86_64.rpm', 'linux-rpm']
+];
+async function syncReleases() {
+  const fs = require('fs'), ua = { 'User-Agent': 'L.A.B-Manager', Accept: 'application/vnd.github+json' };
+  const r = await fetch(`https://api.github.com/repos/${GH_REPO}/releases/latest`, { headers: ua });
+  if (r.status === 404) return { ok: false, error: 'no release published yet' };
+  if (!r.ok) throw new Error('GitHub ' + r.status);
+  const rel = await r.json(), dir = path.join(__dirname, 'app-builds'); fs.mkdirSync(dir, { recursive: true });
+  const got = [];
+  for (const a of rel.assets || []) {
+    const m = ASSET_MAP.find(([re]) => re.test(a.name)); if (!m) continue;
+    const dest = path.join(dir, m[1]);
+    if (fs.existsSync(dest) && fs.statSync(dest).size === a.size) { got.push({ os: m[2], file: m[1], status: 'up-to-date' }); continue; }
+    const d = await fetch(a.browser_download_url, { headers: { 'User-Agent': 'L.A.B-Manager' }, redirect: 'follow' });
+    if (!d.ok) { got.push({ os: m[2], file: m[1], status: 'HTTP ' + d.status }); continue; }
+    fs.writeFileSync(dest + '.part', Buffer.from(await d.arrayBuffer())); fs.renameSync(dest + '.part', dest);
+    got.push({ os: m[2], file: m[1], status: 'downloaded', bytes: a.size });
+  }
+  const version = String(rel.tag_name || '').replace(/^app-v/, '');
+  if (version) fs.writeFileSync(path.join(dir, 'version.json'), JSON.stringify({ version, notes: String(rel.name || '').slice(0, 200), published_at: rel.published_at, source: rel.html_url }, null, 2));
+  db.audit('system', 'app.sync', { version, got });
+  return { ok: true, version, assets: got };
+}
+app.post('/api/app/sync', wrap(async (req, res) => { try { res.json(await syncReleases()); } catch (e) { res.status(502).json({ ok: false, error: e.message }); } }));
+setInterval(() => syncReleases().catch(() => {}), 6 * 3600 * 1000);
+// Latest published app version (written next to the builds as app-builds/version.json)
+app.get('/api/app/version', wrap(async (req, res) => {
+  let v = null; try { v = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'app-builds', 'version.json'), 'utf8')); } catch {}
+  res.json(v || { version: null });
 }));
 app.get('/app/wizard/:os', wrap(async (req, res) => {
   const m = OS_META[req.params.os]; if (!m) return res.status(404).send('unknown OS');
@@ -229,8 +266,8 @@ app.get('/app/wizard/:os', wrap(async (req, res) => {
 app.get('/app/download/:os', wrap(async (req, res) => {
   const m = OS_META[req.params.os]; if (!m) return res.status(404).send('unknown OS');
   const dir = path.join(__dirname, 'app-builds');
-  let file = null; try { file = require('fs').readdirSync(dir).find(f => f.toLowerCase().includes(req.params.os) || f.endsWith('.' + m.ext)); } catch {}
-  if (!file) return res.status(404).json({ error: 'no native build yet for ' + m.label, hint: 'CI builds land in ./app-builds' });
+  let file = null; try { file = buildFor(require('fs').readdirSync(dir).filter(f => f !== 'version.json'), req.params.os); } catch {}
+  if (!file) return res.status(404).json({ error: 'no native build yet for ' + m.label, hint: 'CI releases sync into ./app-builds' });
   res.download(path.join(dir, file));
 }));
 app.post('/api/wizard/profile', wrap(async (req, res) => {
@@ -261,6 +298,14 @@ app.get('/api/usage/summary', wrap(async (req, res) => {
   res.json(await db.usage.summary({ device_id: String(req.query.device_id).slice(0, 80), days: req.query.days, tz: req.query.tz }));
 }));
 app.get('/api/usage/devices', wrap(async (req, res) => res.json(await db.usage.devices())));   // admin overview (home-network only)
+// "Delete my data": the app wipes everything its device ever sent
+app.delete('/api/usage/device/:id', wrap(async (req, res) => {
+  const id = String(req.params.id).slice(0, 80);
+  const r = await db.pool.query('DELETE FROM usage_samples WHERE device_id=$1', [id]);
+  await db.pool.query("DELETE FROM devices WHERE id=$1 AND kind='hub-app'", [id]).catch(() => {});
+  db.audit('device:' + id, 'usage.delete', { rows: r.rowCount });
+  res.json({ ok: true, deleted: r.rowCount });
+}));
 
 // ---- Calendar: ICS subscriptions (no OAuth) + merged family view ----------
 app.get('/api/calendar/feeds', wrap(async (req, res) => res.json(await calendar.listFeeds(req.query.account_id ? Number(req.query.account_id) : null))));

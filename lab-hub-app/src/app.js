@@ -80,7 +80,8 @@ const LAB = (window.LAB = {
   async boot() {
     // identity: reuse the account created via the web hub / wizard
     this.ctx.me = this.store.get('account');
-    this.ctx.server = (await this.invoke('server_url')) || window.LAB_CONFIG.SERVER;
+    // server: your override (Settings) > launch env (LAB_SERVER) > built-in default
+    this.ctx.server = this.store.get('server') || (await this.invoke('server_url')) || window.LAB_CONFIG.SERVER;
     // native device probe (real, only in the compiled app)
     this.ctx.device = await this.invoke('device_info');
     // personalization profile from the install wizard (if any). The wizard also
