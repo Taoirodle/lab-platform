@@ -40,6 +40,24 @@
   .grid{display:grid;gap:16px;margin-top:20px}
   .g2{grid-template-columns:1.1fr .9fr}
   @media(max-width:800px){.g2{grid-template-columns:1fr}}
+  /* phones (brother over Tailscale): nothing wider than the screen, nav scrolls, inputs shrink */
+  @media(max-width:600px){
+    html,body{overflow-x:hidden}
+    .wrap{padding:14px 12px 60px}
+    header{gap:10px}
+    .nav{width:100%;overflow-x:auto;justify-content:flex-start;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .nav::-webkit-scrollbar{display:none}
+    .nav button{white-space:nowrap;padding:8px 11px;font-size:12px;flex:none}
+    .grid{gap:12px}
+    .card{padding:16px;border-radius:16px;min-width:0}
+    .card h3{flex-wrap:wrap;gap:4px 10px}
+    .row{flex-wrap:wrap}
+    .row input[type=text],.row input[type=date]{min-width:0;flex:1 1 150px;font-size:16px}
+    .row .btn{flex:0 0 auto}
+    .hero .big{font-size:20px}
+    .item .del,.ev .del{opacity:1}
+    #td-lists button{font-size:12px}
+  }
   .view{display:none} .view.on{display:block}
   .status{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--txt2)}
   .status i{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok)}
@@ -174,7 +192,7 @@
         <div class="row"><input type="text" id="ev-title" placeholder="Event…" style="flex:2"><input type="date" id="ev-day" style="flex:1"></div>
         <div class="row"><button class="btn pri" id="ev-add" style="width:100%">Add to family calendar</button></div>
         <div class="list" id="ev-list"></div>
-        <div class="empty" style="padding-top:12px">On your phone: subscribe to <code id="ics-url" style="user-select:all"></code> in your calendar app (family events + calendars shared here).</div>
+        <div class="empty" style="padding-top:12px">On your phone: subscribe to <code id="ics-url" style="user-select:all;word-break:break-all"></code> in your calendar app (family events + calendars shared here).</div>
       </div>
       <div class="card">
         <h3>Your calendars <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">Google · Apple · Outlook, by their iCal link</span></h3>

@@ -114,13 +114,14 @@
 - [x] Kiosk Lists panel: list chips (Groceries first when it exists), tap-to-tick, add; refreshes every 30 s.
 - [x] Admin "Family · accounts" card + `POST /api/admin/invite` (one-time 6-digit PIN shown once). Verified: invite → login with the PIN → duplicate name rejected.
 - [x] Stats: "+/−Xh vs last week" on the This-week tile (from the 14-day series, no extra call).
-- [ ] Web hub on a phone: check the layout at 375 px in the browser pane, fix what wraps badly (brother reaches it over Tailscale on a phone).
+- [x] Web hub on a phone: at 375 px the page overflowed (clipped buttons, wrapped nav) — added a ≤600 px breakpoint (scrolling nav, stacked cards, shrinking inputs, 16 px inputs to stop iOS zoom); verified docWidth == viewport.
 - [x] `docs/13-hub-app.md` refreshed (home/away/offline/live/palette; lists, automations, devices).
 
 ---
 
 ## Log
 - 2026-09-04 00:55 — Run started. Cron installed. Plan written. Repo public; CI re-fired on `app-v0.1.0`.
+- 2026-09-04 19:35 — **0.2.4 released** (lists, clock automations UI, toasts). Wave 16 done: kiosk lists, family invites (verified), vs-last-week, hub phone layout fixed, docs refreshed.
 - 2026-09-04 19:10 — **0.2.3 released** (tag at 731d279 = the built exe: home/away, offline cache, devices, palette, digest, live updates, live_device, CSV). Wave 15 first three items shipped + verified live (time automations fired on the minute; Sauce by device name; toasts). Tao was live on the kiosk/admin during the test (audit 18:18–18:23).
 - 2026-09-04 18:45 — Waves 13+14 shipped (M-000024): backups cron + restore, smoke.sh 28/28, kiosk/hub Sauce, retention control, live WS updates (verified with a real WS client), hub calendar linking, audit trail, CSV export, live_device page. 0.2.3 final build running (then tag). Audit log shows Tao using the new Admin desk at 16:15.
 - 2026-09-04 17:40 — Wave 12 built + verified in-browser (home/away/offline, device onboarding, palette; server retention purge, hub Sauce card). Build for 0.2.3 in progress.
