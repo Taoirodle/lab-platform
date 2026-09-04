@@ -241,6 +241,41 @@ async function events({ account_id, from, to }) {
   return out;
 }
 
+// ---- the other direction: the family calendar as an ICS feed phones can subscribe to ----
+const icsEsc = s => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+const icsUtc = d => new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+const icsDay = s => String(s).replace(/-/g, '');
+const fold = line => { const out = []; let l = line; while (l.length > 72) { out.push(l.slice(0, 72)); l = ' ' + l.slice(72); } out.push(l); return out.join('\r\n'); };
+async function familyIcs() {
+  const tz = DEFAULT_TZ;
+  const from = new Date(Date.now() - 30 * 86400000).toLocaleDateString('en-CA', { timeZone: tz }), to = new Date(Date.now() + 365 * 86400000).toLocaleDateString('en-CA', { timeZone: tz });
+  const [fam, feed] = await Promise.all([
+    db.pool.query(`SELECT id,title,to_char(day,'YYYY-MM-DD') AS day,at_time,by_name,created_at FROM shared_events WHERE day BETWEEN $1 AND $2 ORDER BY day`, [from, to]).then(r => r.rows),
+    db.pool.query(`SELECT e.id,e.uid,e.title,e.location,e.all_day,e.start_at,e.end_at,to_char(e.day,'YYYY-MM-DD') AS day,f.name AS feed
+      FROM calendar_events e JOIN calendar_feeds f ON f.id=e.feed_id WHERE f.shared AND e.day BETWEEN $1 AND $2 ORDER BY e.start_at LIMIT 3000`, [from, to]).then(r => r.rows)
+  ]);
+  const now = icsUtc(new Date()), L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//L.A.B//Family Calendar//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Family (L.A.B)', 'X-WR-TIMEZONE:' + tz];
+  for (const e of fam) {
+    L.push('BEGIN:VEVENT', 'UID:fam-' + e.id + '@lab', 'DTSTAMP:' + now, fold('SUMMARY:' + icsEsc(e.title)));
+    if (e.at_time && /^\d{2}:\d{2}/.test(e.at_time)) {
+      const [h, m] = e.at_time.split(':').map(Number), [Y, M, D] = e.day.split('-').map(Number);
+      const st = zonedToUtc(Y, M, D, h, m, 0, tz);
+      L.push('DTSTART:' + icsUtc(st), 'DTEND:' + icsUtc(st + 3600000));
+    } else { L.push('DTSTART;VALUE=DATE:' + icsDay(e.day), 'DTEND;VALUE=DATE:' + icsDay(new Date(new Date(e.day + 'T12:00:00Z').getTime() + 86400000).toISOString().slice(0, 10))); }
+    if (e.by_name) L.push(fold('DESCRIPTION:' + icsEsc('Added by ' + e.by_name + ' on the family Hub')));
+    L.push('END:VEVENT');
+  }
+  for (const e of feed) {
+    L.push('BEGIN:VEVENT', 'UID:feed-' + e.id + '@lab', 'DTSTAMP:' + now, fold('SUMMARY:' + icsEsc(e.title)));
+    if (e.all_day) { L.push('DTSTART;VALUE=DATE:' + icsDay(e.day), 'DTEND;VALUE=DATE:' + icsDay(new Date(new Date(e.day + 'T12:00:00Z').getTime() + 86400000).toISOString().slice(0, 10))); }
+    else { L.push('DTSTART:' + icsUtc(e.start_at), 'DTEND:' + icsUtc(e.end_at || new Date(new Date(e.start_at).getTime() + 3600000))); }
+    if (e.location) L.push(fold('LOCATION:' + icsEsc(e.location)));
+    L.push(fold('DESCRIPTION:' + icsEsc('From ' + e.feed + ' (shared on the family Hub)')), 'END:VEVENT');
+  }
+  L.push('END:VCALENDAR');
+  return L.join('\r\n') + '\r\n';
+}
+
 let timer = null;
 async function refreshAll() {
   const feeds = (await db.pool.query('SELECT * FROM calendar_feeds ORDER BY last_fetch NULLS FIRST')).rows;
@@ -253,4 +288,4 @@ function start() {
   timer = setInterval(() => refreshAll().catch(() => {}), REFRESH_MS);
 }
 
-module.exports = { parseIcs, expand, materialize, refreshFeed, refreshById, refreshAll, listFeeds, addFeed, removeFeed, events, start, DEFAULT_TZ };
+module.exports = { parseIcs, expand, materialize, refreshFeed, refreshById, refreshAll, listFeeds, addFeed, removeFeed, events, familyIcs, start, DEFAULT_TZ };

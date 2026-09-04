@@ -324,6 +324,13 @@ app.post('/api/calendar/feeds', wrap(async (req, res) => {
 app.post('/api/calendar/feeds/:id/refresh', wrap(async (req, res) => res.json(await calendar.refreshById(req.params.id))));
 app.delete('/api/calendar/feeds/:id', wrap(async (req, res) => res.json(await calendar.removeFeed(req.params.id, req.query.account_id ? Number(req.query.account_id) : null))));
 app.get('/api/calendar/events', wrap(async (req, res) => res.json(await calendar.events({ account_id: req.query.account_id ? Number(req.query.account_id) : null, from: req.query.from, to: req.query.to }))));
+// the family calendar as a feed phones can subscribe to (family events + calendars shared with the family)
+app.get('/api/calendar/family.ics', wrap(async (req, res) => {
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+  res.setHeader('Content-Disposition', 'inline; filename="family.ics"');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.send(await calendar.familyIcs());
+}));
 
 // ---- Showcase: the "L.A.B ONE" keynote — cue channel + real light choreography ----
 app.post('/api/showcase/cue', wrap(async (req, res) => {
@@ -382,9 +389,20 @@ async function runSauceAction(a) {
       await db.pool.query('INSERT INTO shared_todos(text,by_name) VALUES($1,$2)', [String(a.text).slice(0, 300), 'The Sauce']);
       return `added "${String(a.text).slice(0, 60)}" to the list`;
     }
+    if (a.tool === 'todo_done' && a.text) {
+      // tick the open item that matches best (all words present, else the longest common word)
+      const open = (await db.pool.query('SELECT id,text FROM shared_todos WHERE NOT done ORDER BY created_at DESC LIMIT 100')).rows;
+      const words = String(a.text).toLowerCase().split(/\W+/).filter(w => w.length > 2);
+      let best = open.find(t => words.length && words.every(w => t.text.toLowerCase().includes(w)))
+        || open.map(t => [t, words.filter(w => t.text.toLowerCase().includes(w)).length]).filter(x => x[1] > 0).sort((x, y) => y[1] - x[1]).map(x => x[0])[0];
+      if (!best) return null;
+      await db.pool.query('UPDATE shared_todos SET done=true WHERE id=$1', [best.id]);
+      return `ticked off "${best.text.slice(0, 60)}"`;
+    }
     if (a.tool === 'event' && a.title && /^\d{4}-\d{2}-\d{2}$/.test(String(a.day || ''))) {
-      await db.pool.query('INSERT INTO shared_events(title,day,by_name) VALUES($1,$2,$3)', [String(a.title).slice(0, 160), a.day, 'The Sauce']);
-      return `put "${String(a.title).slice(0, 50)}" on the calendar for ${a.day}`;
+      const time = /^\d{2}:\d{2}$/.test(String(a.time || '')) ? String(a.time) : null;
+      await db.pool.query('INSERT INTO shared_events(title,day,at_time,by_name) VALUES($1,$2,$3,$4)', [String(a.title).slice(0, 160), a.day, time, 'The Sauce']);
+      return `put "${String(a.title).slice(0, 50)}" on the calendar for ${a.day}${time ? ' at ' + time : ''}`;
     }
   } catch { /* an action must never break the reply */ }
   return null;
@@ -395,9 +413,15 @@ app.post('/api/sauce/ask', wrap(async (req, res) => {
   if (!message.trim()) return res.status(400).json({ error: 'empty message' });
   const t0 = Date.now();
   try {
-    // give the brain the live state of the house so it can act sensibly
-    const [rooms, scenes] = await Promise.all([roomsView().catch(() => []), conductor.listScenes().catch(() => [])]);
-    const { reply, actions } = await sauce.ask({ name: b.name, message, history: Array.isArray(b.history) ? b.history : [], house: { rooms, scenes } });
+    // give the brain the live state of the house — devices, today's calendar, the open list — so it answers from reality
+    const tz = calendar.DEFAULT_TZ, today = new Date().toLocaleDateString('en-CA', { timeZone: tz }), tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: tz });
+    const [rooms, scenes, events, todos] = await Promise.all([
+      roomsView().catch(() => []), conductor.listScenes().catch(() => []),
+      calendar.events({ account_id: b.account_id ? Number(b.account_id) : null, from: today, to: tomorrow }).catch(() => []),
+      db.pool.query('SELECT text FROM shared_todos WHERE NOT done ORDER BY created_at DESC LIMIT 12').then(r => r.rows).catch(() => [])
+    ]);
+    const now = new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
+    const { reply, actions } = await sauce.ask({ name: b.name, message, history: Array.isArray(b.history) ? b.history : [], house: { rooms, scenes, events, todos, today, now } });
     const did = [];
     for (const a of (actions || [])) { const r = await runSauceAction(a); if (r) did.push(r); }
     db.events.add({ account_id: b.account_id || null, type: 'sauce', payload: { ms: Date.now() - t0, q: message.slice(0, 120), acted: did.length } }).catch(() => {});

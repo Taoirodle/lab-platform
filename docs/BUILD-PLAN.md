@@ -71,8 +71,8 @@
 - [x] Wizard: Mac wizard sends `?arch=$(uname -m)`; `/app/download/mac` picks arm64 vs x64 dmg. LICENSE now carries the full GPLv3 text.
 
 ### 11 · Next wave (pick top-down)
-- [ ] The Sauce knows the calendar + list: pass today's/tomorrow's merged events and open to-dos into `sauce.ask` context so "what's on tonight?" and "what's left on the list?" answer truthfully.
-- [ ] Family calendar **export**: `GET /api/calendar/family.ics` (VCALENDAR of shared_events + shared feeds) so phones can subscribe the other way; link it from the web hub + app Calendar page.
+- [x] The Sauce knows the calendar + list (today/tomorrow merged events + open to-dos in context, local time), new `todo_done` action (best-match tick), timed `event`s. Verified live: answered "just one thing left…", ticked it off, "tomorrow's wide open".
+- [x] Family calendar export `GET /api/calendar/family.ics` (family events + shared feeds, folded, DST-safe) — round-trips through our own parser. Subscribe card in the app Calendar; URL shown on the web hub.
 - [ ] Admin: generations desk — list staged/published skins/widgets/pages with publish/reject + "Generate now" buttons; shows the sanitiser's dropped-items count.
 - [ ] Web hub "Get the App": show version + notes from `/api/app/version`; Mac button passes arch.
 - [ ] Kiosk: "This week" + "Coming up" from the merged endpoints.
@@ -84,6 +84,7 @@
 
 ## Log
 - 2026-09-04 00:55 — Run started. Cron installed. Plan written. Repo public; CI re-fired on `app-v0.1.0`.
+- 2026-09-04 10:40 — Wave 11: Sauce context + todo_done + family.ics shipped and verified live (M-000023). CI found blocked at account level (zero-step jobs) — needs Tao.
 - 2026-09-04 10:27 — **0.2.1 released** (tray/close-to-tray/reminders, prefs sync, family This-week, Mac arch, builders `page` kind with anti-hallucination sanitiser; the Dev Team autonomously shipped a "Handbook" page). Manager M-000023. Windows installer + version.json published; tag `app-v0.2.1` pushed. Chunks 1–10 complete; section 11 is the next wave.
 - 2026-09-04 09:55 — 0.2.0 tagged (`1e88816`, CI + GitHub Release + server sync loop). Then tray/close-to-tray/notifications, prefs sync (M-000022), family "This week", Mac arch pick, LICENSE — all verified; bumping to 0.2.1 for a consistent tag.
 - 2026-09-04 03:45 — Chunks 6+7+8 built + verified: all 10 pages driven in a real browser with zero runtime errors; autostart build launch-verified; web hub + admin pages deployed. Versions bumped to 0.2.0; release build running; `docs/13-hub-app.md` written.

@@ -35,17 +35,22 @@ const PERSONA =
 `You are "The Sauce", the AI that runs the Volkwyn family's home platform (L.A.B) from their own private server. Warm, upbeat, concise (1-3 sentences), lightly witty — never corny.`;
 
 function toolDoc(house) {
+  const ev = (house.events || []).slice(0, 14).map(e => `${e.day}${e.at_time ? ' ' + e.at_time : ''} ${e.title}${e.source === 'family' ? '' : ' (' + (e.feed || 'linked') + ')'}`).join('; ');
+  const todos = (house.todos || []).slice(0, 12).map(t => t.text).join('; ');
   return `You can ACT on the home. Only act on what the person actually asked for.
 Available scenes: ${(house.scenes || []).map(s => s.name).join(', ') || '(none)'}
 Rooms: ${(house.rooms || []).map(r => `${r.id} (${r.on ? 'on' : 'off'})`).join(', ') || '(none)'}
+Calendar (today + tomorrow, real): ${ev || '(nothing on)'}
+Open family to-dos (real): ${todos || '(list is clear)'}
 
 Actions you may emit in "actions":
 - {"tool":"scene","name":"<scene>"}            run a saved scene (e.g. movie-night, all-off)
 - {"tool":"light","room":"<room id>","on":true|false}   switch one room's lights
 - {"tool":"todo","text":"<short>"}             add to the shared family to-do
-- {"tool":"event","title":"<short>","day":"YYYY-MM-DD"}  add to the shared family calendar
+- {"tool":"todo_done","text":"<words from an open to-do>"}   tick an open to-do off
+- {"tool":"event","title":"<short>","day":"YYYY-MM-DD","time":"HH:MM" optional}  add to the shared family calendar
 
-Rules: emit an action ONLY when the person clearly asked for it. If they ask for something outside the home (order food, buy something, spend money, message someone), do NOT invent an action — say that ability is being wired up and offer what you CAN do (a plan, a list). Never claim you did something you didn't emit an action for. Today is ${new Date().toISOString().slice(0, 10)}.`;
+Rules: emit an action ONLY when the person clearly asked for it. When asked what's on or what's left, answer from the real calendar and list above — never invent events or items. If they ask for something outside the home (order food, buy something, spend money, message someone), do NOT invent an action — say that ability is being wired up and offer what you CAN do (a plan, a list). Never claim you did something you didn't emit an action for. Today is ${house.today || new Date().toISOString().slice(0, 10)}${house.now ? ', local time ' + house.now : ''}.`;
 }
 
 async function ask({ name, message, history, house = {} }) {

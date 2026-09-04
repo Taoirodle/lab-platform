@@ -168,6 +168,7 @@
         <div class="row"><input type="text" id="ev-title" placeholder="Event…" style="flex:2"><input type="date" id="ev-day" style="flex:1"></div>
         <div class="row"><button class="btn pri" id="ev-add" style="width:100%">Add to family calendar</button></div>
         <div class="list" id="ev-list"></div>
+        <div class="empty" style="padding-top:12px">On your phone: subscribe to <code id="ics-url" style="user-select:all"></code> in your calendar app (family events + calendars shared here).</div>
       </div>
       <div class="card">
         <h3>This week <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">who chose to share</span></h3>
@@ -378,6 +379,7 @@
     tick(); setInterval(tick,1000);
     try{const id=await api('/api/identity'); $('hosted').textContent='hosted by '+id.node; $('s-node').textContent=id.node; $('foot').textContent='L.A.B Hub · shared family surface · from '+id.node;}catch{}
     loadTodos(); loadEvents(); loadFamilyStats(); loadTargets(); loadSkins();
+    $('ics-url').textContent=location.origin+'/api/calendar/family.ics';
     setInterval(loadTodos,15000); setInterval(loadEvents,20000);
     api('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:me.id,type:'page',payload:{page:'web-hub'}})}).catch(()=>{});
     if(boot){boot.done();boot=null;}

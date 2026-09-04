@@ -35,6 +35,13 @@ LAB.register({ id: 'calendar', label: 'Calendar', icon: I.cal, order: 3,
         <form class="wadd" id="a-add"><input placeholder="Add a family event…" maxlength="120"><input type="time" id="a-time" style="flex:0 0 auto"><button class="btn pri">Add</button></form>
         <div class="muted">Family events are seen by everyone on the Hub.</div></div>`;
     const feedsCard = LAB.el('div', 'card'); el.appendChild(feedsCard);
+    // the other direction: put the family calendar on every phone
+    const sub = LAB.el('div', 'card'); el.appendChild(sub);
+    const icsUrl = ctx.server.replace(/\/+$/, '') + '/api/calendar/family.ics';
+    sub.innerHTML = `<h3>Family calendar on your phone</h3><div class="muted">Subscribe once and family events (plus calendars shared with the family) show up in your phone's own calendar app, refreshed automatically. On the home network or over Tailscale.</div>
+      <form class="wadd" style="margin-top:10px"><input readonly value="${LAB.esc(icsUrl)}" onclick="this.select()"><button class="btn" type="button" id="ics-copy">Copy</button></form>
+      <div class="muted">iPhone: Settings → Calendar → Accounts → Add Subscribed Calendar. Android/Google: paste it under "From URL" on calendar.google.com. Outlook: Add calendar → Subscribe from web.</div>`;
+    sub.querySelector('#ics-copy').onclick = async () => { try { await navigator.clipboard.writeText(icsUrl); sub.querySelector('#ics-copy').textContent = 'Copied'; } catch {} };
 
     async function load() {
       const from = ymd(new Date(cur.getFullYear(), cur.getMonth(), -6)), to = ymd(new Date(cur.getFullYear(), cur.getMonth() + 1, 7));
