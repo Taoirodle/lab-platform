@@ -61,7 +61,7 @@
 ### 9 · Release
 - [x] Bumped to 0.2.0 everywhere; Windows 0.2.0 installer built locally, launch-verified, published to server `app-builds/` + `version.json`.
 - [x] CI: `release` job publishes all installers to a GitHub Release on `app-v*` tags; server `POST /api/app/sync` (+ every 6 h) pulls them into `app-builds/` with canonical names and writes `version.json` from the tag. `/app/download/:os` now prefers the canonical extension (was serving the .deb for Linux by alphabetical accident).
-- [ ] After CI: confirm the release exists, run `/api/app/sync`, check `/api/app/targets` shows mac + linux builds.
+- [ ] **BLOCKED on Tao:** every CI job on `app-v0.2.0` and `app-v0.2.1` failed with **zero steps run** (checked via the public Actions API 10:30) — jobs never start, which is what GitHub's account-level Actions/billing lock looks like, not a workflow error. Needs: github.com/settings/billing (valid payment method / spending limit) or the banner on the Actions tab. Once runs start, the tag can be re-pushed (`git push --delete origin app-v0.2.1 && git push origin app-v0.2.1`) and the server's `POST /api/app/sync` pulls Mac/Linux automatically. Until then Mac/Linux get the wizard, Windows is fully served.
 
 ### 10 · Next (in priority order)
 - [x] Tray icon (Open / Quit, left-click opens), close-to-tray (Settings toggle, verified: WM_CLOSE → process alive, window hidden), autostart now launches `--minimized` into the tray, OS notifications via Rust `notify`; `modules/notify.js` reminds 15 min before timed calendar events (once, toggle in Settings).
