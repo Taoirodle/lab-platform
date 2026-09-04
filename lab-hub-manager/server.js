@@ -308,6 +308,22 @@ app.get('/api/usage/day', wrap(async (req, res) => {
   res.json(await db.usage.day({ device_id: String(req.query.device_id).slice(0, 80), date: req.query.date, tz: req.query.tz }));
 }));
 app.get('/api/usage/devices', wrap(async (req, res) => res.json(await db.usage.devices())));   // admin overview (home-network only)
+// Retention: measurements older than N days are purged nightly (default 90). Admin-only setting.
+app.get('/api/settings/usage', wrap(async (req, res) => res.json(await db.settings.get('usage', { retention_days: 90 }))));
+app.post('/api/settings/usage', wrap(async (req, res) => {
+  const days = Math.max(7, Math.min(3650, Math.round(Number((req.body || {}).retention_days)) || 90));
+  await db.settings.set('usage', { retention_days: days });
+  db.audit('admin', 'settings.usage', { retention_days: days });
+  res.json({ retention_days: days });
+}));
+async function purgeUsage() {
+  const s = await db.settings.get('usage', { retention_days: 90 });
+  const r = await db.pool.query('DELETE FROM usage_samples WHERE ts < now() - make_interval(days => $1::int)', [s.retention_days || 90]);
+  if (r.rowCount) db.audit('system', 'usage.purge', { deleted: r.rowCount, retention_days: s.retention_days });
+  return r.rowCount;
+}
+app.post('/api/usage/purge', wrap(async (req, res) => res.json({ deleted: await purgeUsage() })));
+setInterval(() => purgeUsage().catch(() => {}), 24 * 3600 * 1000);
 // "Delete my data": the app wipes everything its device ever sent
 app.delete('/api/usage/device/:id', wrap(async (req, res) => {
   const id = String(req.params.id).slice(0, 80);

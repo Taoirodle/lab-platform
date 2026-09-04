@@ -83,6 +83,9 @@
   <div class="panels">
     <div class="panel"><div class="h-lbl">Coming up · next 7 days</div><div id="k-up"><div class="kempty">…</div></div></div>
     <div class="panel"><div class="h-lbl">This week · who's sharing</div><div id="k-week"><div class="kempty">…</div></div></div>
+    <div class="panel" style="grid-column:1/-1"><div class="h-lbl">Ask The Sauce</div>
+      <form id="k-sq" style="display:flex;gap:10px"><input id="k-sqin" placeholder="What's on tonight? · add milk to the list · lights off in the lounge" maxlength="500" style="flex:1;min-width:0;font:inherit;font-size:18px;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.25);color:inherit"><button style="font:inherit;font-size:16px;font-weight:700;padding:14px 22px;border-radius:14px;border:0;background:linear-gradient(135deg,#9a86ff,#ff9e6b);color:#0a0c14">Ask</button></form>
+      <div id="k-sqout" style="margin-top:12px;font-size:17px;line-height:1.5;min-height:26px;opacity:.85"></div></div>
   </div>
 
 <script>
@@ -145,6 +148,14 @@
     const fam=await api('/api/family/stats').catch(()=>[]);
     $('k-week').innerHTML=fam.length?fam.map(m=>{const av=m.avatar||{};const cats=Object.entries(m.cats).sort((a,b)=>b[1]-a[1]);return `<div class="kmem"><div class="av" style="background:${esc(av.color||'#9a86ff')}">${esc(av.emoji||'🙂')}</div><div style="flex:1;min-width:0"><div>${esc(m.name)} <span style="opacity:.6">· ${hm(m.total)}</span></div><div class="bar">${cats.map(([k,v])=>`<i style="width:${(100*v/m.total).toFixed(1)}%;background:${KC[k]||KC.Other}"></i>`).join('')}</div></div></div>`;}).join(''):'<div class="kempty">Nobody is sharing yet — Profile → "What the family can see" in the app.</div>';
   }
+
+  $('k-sq').onsubmit=async e=>{
+    e.preventDefault(); const t=$('k-sqin').value.trim(); if(!t) return; $('k-sqin').value=''; $('k-sqout').textContent='…';
+    try{ const r=await api('/api/sauce/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'the kiosk',message:t,history:[]})});
+      $('k-sqout').innerHTML=esc(r.reply).replace(/\n/g,'<br>')+(r.did&&r.did.length?`<div style="margin-top:6px;font-size:13px;color:#9a86ff">⚡ ${r.did.map(esc).join(' · ')}</div>`:'');
+      if(r.did&&r.did.length){ refresh(); refreshFamily(); }
+    }catch{ $('k-sqout').textContent='The Sauce is out of reach right now.'; }
+  };
 
   tick(); setInterval(tick,1000);
   refresh(); setInterval(refresh,10000);

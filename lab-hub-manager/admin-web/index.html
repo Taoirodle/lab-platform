@@ -233,6 +233,11 @@
             <label class="toggle"><input type="checkbox" id="pause"><span class="tr"></span></label></div>
           <div style="font-size:12px;color:var(--ink3)">When paused, the Dev Team stops shipping — nothing builds until you resume.</div>
         </div>
+        <div class="ctl">
+          <div class="row"><span class="name">Keep usage data for</span>
+            <span><input type="number" id="ret" min="7" max="3650" step="1" style="width:74px;font:inherit;padding:6px 8px;border:1px solid var(--line2);border-radius:2px"> days</span></div>
+          <div style="font-size:12px;color:var(--ink3)">Per-minute measurements from the personal apps are purged nightly past this. People can wipe their own PC's data from the app any time.</div>
+        </div>
       </div>
     </div>
     <div>
@@ -392,6 +397,8 @@
   $('act').oninput=()=>{$('v-act').textContent=$('act').value;pushAI();};
   $('agg').oninput=()=>{$('v-agg').textContent=$('agg').value;pushAI();};
   $('pause').onchange=pushAI;
+  api('/api/settings/usage').then(u=>{ $('ret').value=u.retention_days; }).catch(()=>{});
+  $('ret').onchange=()=>api('/api/settings/usage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({retention_days:+$('ret').value})}).then(u=>{ $('ret').value=u.retention_days; }).catch(()=>{});
 
   /* ---------- Fleet ---------- */
   async function loadFleet(){

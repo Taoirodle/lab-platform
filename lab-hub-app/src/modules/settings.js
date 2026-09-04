@@ -25,11 +25,15 @@ LAB.register({ id: 'settings', label: 'Settings', icon: I.cog, order: 10,
       box.querySelector('#s-get').onclick = () => LAB.openExternal(ctx.server + '/app/download/' + (LAB.ctx.device && /mac/i.test(LAB.ctx.device.os) ? 'mac' : LAB.ctx.device && /linux/i.test(LAB.ctx.device.os) ? 'linux' : 'win'));
     });
 
-    // ---- server override ----
+    // ---- where your L.A.B is: home address + away (Tailscale) address ----
     const sv = LAB.el('div', 'card'); el.appendChild(sv);
-    sv.innerHTML = `<h3>Server</h3><form class="wadd"><input id="s-url" placeholder="http://192.168.1.115:8090" value="${LAB.esc(LAB.store.get('server') || '')}"><button class="btn">Use</button><button class="btn" type="button" id="s-reset">Default</button></form><div class="muted">Point the app at a different L.A.B — for example the server's Tailscale address when you're away. Takes effect on next launch.</div>`;
-    sv.querySelector('form').onsubmit = e => { e.preventDefault(); const u = sv.querySelector('#s-url').value.trim().replace(/\/+$/, ''); if (!/^https?:\/\/[^\s]+$/.test(u)) return; LAB.store.set('server', u); c.querySelector('#s-srv').textContent = u + ' (after restart)'; };
-    sv.querySelector('#s-reset').onclick = () => { LAB.store.del('server'); sv.querySelector('#s-url').value = ''; c.querySelector('#s-srv').textContent = 'default (after restart)'; };
+    const okUrl = u => /^https?:\/\/[^\s/]+(:\d+)?$/.test(u);
+    sv.innerHTML = `<h3>Where your L.A.B is</h3><div class="muted">Right now: <b>${LAB.esc(LAB.where)}</b> via ${LAB.esc(ctx.server)}. The app tries home first, then away, and switches back on its own.</div>
+      <form class="wadd" style="margin-top:10px"><span class="muted" style="flex:0 0 52px">Home</span><input id="s-url" placeholder="${LAB.esc(window.LAB_CONFIG.SERVER)}" value="${LAB.esc(LAB.store.get('server') || '')}"><button class="btn">Save</button></form>
+      <form class="wadd" id="s-away-f"><span class="muted" style="flex:0 0 52px">Away</span><input id="s-away" placeholder="http://100.x.y.z:8090 (the server's Tailscale address)" value="${LAB.esc(LAB.store.get('server_away') || '')}"><button class="btn">Save</button></form>
+      <div class="muted" id="s-msg">Leave Home empty for the built-in address. Away is used when home doesn't answer — install Tailscale on the server and put its 100.x address here.</div>`;
+    sv.querySelector('form').onsubmit = e => { e.preventDefault(); const u = sv.querySelector('#s-url').value.trim().replace(/\/+$/, ''); if (u && !okUrl(u)) { sv.querySelector('#s-msg').textContent = 'That needs to look like http://host:port'; return; } if (u) LAB.store.set('server', u); else LAB.store.del('server'); sv.querySelector('#s-msg').textContent = 'Saved — used on the next launch.'; };
+    sv.querySelector('#s-away-f').onsubmit = e => { e.preventDefault(); const u = sv.querySelector('#s-away').value.trim().replace(/\/+$/, ''); if (u && !okUrl(u)) { sv.querySelector('#s-msg').textContent = 'That needs to look like http://host:port'; return; } if (u) LAB.store.set('server_away', u); else LAB.store.del('server_away'); sv.querySelector('#s-msg').textContent = 'Saved — tried whenever home does not answer.'; };
 
     // ---- native: measuring, autostart ----
     if (LAB.isNative()) {

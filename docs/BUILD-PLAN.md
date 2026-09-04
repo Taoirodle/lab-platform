@@ -81,18 +81,27 @@
 - [x] Sauce widget keeps the last exchanges (per install) and sends them as history.
 
 ### 12 · Wave three (pick top-down)
-- [ ] Home / away: the app pings the home address, then the Tailscale "away" address (Settings), and picks what answers; footer shows home / away / offline; re-checks while offline.
-- [ ] Offline-tolerant reads: GET responses cached per install; when the server is unreachable, pages show the last-seen data with an "offline · as of HH:MM" bar; writes fail honestly.
-- [ ] Automations page → real device onboarding: add WLED / WiZ / push device (name, room, driver, address), probe, remove; save a scene from the current room states.
-- [ ] Web hub: Ask The Sauce card (phones) using `/api/sauce/ask`.
-- [ ] Manager hygiene: nightly purge of `usage_samples` older than 90 days (setting), audit row.
-- [ ] Weekly digest notification (Sunday 18:00 local): this week's active time, top kind, streak.
-- [ ] Command palette (Ctrl+K): jump to a page, ask The Sauce, run a scene.
+- [x] Home / away: `LAB.pickServer()` pings home (2.5 s) then the away address; footer shows `home / away / offline`; while offline it re-picks every 45 s and re-renders on recovery. Settings has Home + Away fields.
+- [x] Offline-tolerant reads: every GET cached per install; unreachable → cached answer + "Offline — showing what your L.A.B last said (as of …)" bar; writes throw honestly. Verified in-browser: cache hit in 2 ms, bar + footer flip, write refused, recovery to home.
+- [x] Automations page: devices list (online dot, toggle, remove), add a device (WLED / WiZ / push / virtual; push shows its token once), "check who's online", save a scene from the current light states, run scenes, motion→scene builder. Verified in-browser: add → listed → removed, no errors.
+- [x] Web hub: "Ask The Sauce" card with short history; refreshes list/calendar when it acts.
+- [x] Manager hygiene: `settings.usage.retention_days` (7–3650, default 90) via `GET/POST /api/settings/usage`; nightly purge + `POST /api/usage/purge`; audited. Smoke-tested.
+- [x] Weekly digest: Sunday ≥18:00, once, real numbers only (active time, top kind, streak) via the native notifier; skipped when nothing was measured.
+- [x] Command palette (Ctrl/Cmd+K): pages, scenes, or anything else goes to The Sauce with the answer inline. Verified in-browser (open → filter → Enter → navigated; scenes listed).
+
+### 13 · Wave four (pick top-down)
+- [x] Nightly Postgres backup: `scripts/backup-db.sh` installed at `/srv/lab/scripts`, cron 03:17, keep 14; first dump made (144 KB, 22 tables). `scripts/restore-db.sh` swaps a dump in safely.
+- [x] `scripts/smoke.sh`: 28 endpoint checks — all pass against the live server.
+- [x] Kiosk: touch-sized "Ask The Sauce" box; refreshes rooms/calendar when it acts.
+- [x] Admin: "Keep usage data for N days" next to the AI controls (wired to `/api/settings/usage`).
+- [ ] Device page: live disks + network interfaces (Rust `sysinfo::Networks`) instead of the static probe only.
+- [x] `docs/14-operations.md`: deploy, logs, backups/restore, usage data, releases, Tailscale steps, builders desk.
 
 ---
 
 ## Log
 - 2026-09-04 00:55 — Run started. Cron installed. Plan written. Repo public; CI re-fired on `app-v0.1.0`.
+- 2026-09-04 17:40 — Wave 12 built + verified in-browser (home/away/offline, device onboarding, palette; server retention purge, hub Sauce card). Build for 0.2.3 in progress.
 - 2026-09-04 16:58 — **0.2.2 released** (day timeline, family.ics subscribe card, Sauce widget history; web: admin builders desk, hub version, kiosk panels; wizard launches installer). Browser pass clean on all 10 pages; exe verified; installer + version.json published; tag `app-v0.2.2`. Wave 11 complete; wave 12 defined. (Turn gap 11:00→16:54: cron fires queued while the previous turn ran.)
 - 2026-09-04 10:40 — Wave 11: Sauce context + todo_done + family.ics shipped and verified live (M-000023). CI found blocked at account level (zero-step jobs) — needs Tao.
 - 2026-09-04 10:27 — **0.2.1 released** (tray/close-to-tray/reminders, prefs sync, family This-week, Mac arch, builders `page` kind with anti-hallucination sanitiser; the Dev Team autonomously shipped a "Handbook" page). Manager M-000023. Windows installer + version.json published; tag `app-v0.2.1` pushed. Chunks 1–10 complete; section 11 is the next wave.

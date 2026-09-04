@@ -21,6 +21,20 @@ LAB.notify = {
     }
     LAB.store.set('notified', [...seen].slice(-200));
   },
-  start() { if (this.timer || !this.enabled()) return; this.tick(); this.timer = setInterval(() => this.tick(), this.EVERY_MS); },
+  // Sunday evening: one line about the week, from real numbers, once
+  async digest() {
+    if (!this.enabled() || !LAB.telemetry.enabled) return;
+    const d = new Date(); if (d.getDay() !== 0 || d.getHours() < 18) return;
+    const key = d.toLocaleDateString('en-CA'); if (LAB.store.get('digest_done') === key) return;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    let s = null; try { s = await LAB.api(`/api/usage/summary?device_id=${encodeURIComponent(LAB.telemetry.deviceId())}&days=7&tz=${encodeURIComponent(tz)}`); } catch { return; }
+    if (!s || !s.active_minutes) return;
+    const tot = s.days.reduce((a, x) => a + x.total, 0), cats = {}; s.days.forEach(x => Object.entries(x.cats).forEach(([k, v]) => { cats[k] = (cats[k] || 0) + v; }));
+    const top = Object.entries(cats).sort((a, b) => b[1] - a[1])[0];
+    let streak = 0; for (let i = s.days.length - 1; i >= 0; i--) { if (s.days[i].total >= 30) streak++; else break; }
+    LAB.store.set('digest_done', key);
+    await LAB.invoke('notify', { title: 'Your week on ' + ((LAB.ctx.device && LAB.ctx.device.hostname) || 'this PC'), body: `${LAB.stats.fmtMin(tot)} active · mostly ${top ? top[0] : '—'}${streak > 1 ? ' · ' + streak + '-day streak' : ''}. Details in Stats.` });
+  },
+  start() { if (this.timer || !this.enabled()) return; this.tick(); this.digest(); this.timer = setInterval(() => { this.tick(); this.digest(); }, this.EVERY_MS); },
   stop() { clearInterval(this.timer); this.timer = null; }
 };

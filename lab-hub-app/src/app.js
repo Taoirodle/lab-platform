@@ -25,7 +25,57 @@ const LAB = (window.LAB = {
   // --- helpers shared by every page ---
   el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; },
   esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },
-  api(path, opts) { return fetch(this.ctx.server + path, opts).then(async r => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'error'); return j; }); },
+  // Every GET is remembered per install; when the server can't be reached, the last
+  // answer comes back instead (and the shell shows an "offline · as of" bar). Writes
+  // never pretend — they fail honestly.
+  api(path, opts) {
+    const isGet = !opts || !opts.method || opts.method === 'GET', key = 'labcache_' + path;
+    const ac = new AbortController(), t = setTimeout(() => ac.abort(), isGet ? 12000 : 120000);
+    return fetch(this.ctx.server + path, { ...(opts || {}), signal: ac.signal }).then(async r => {
+      clearTimeout(t);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'error');
+      if (isGet) { try { const s = JSON.stringify(j); if (s.length < 250000) localStorage.setItem(key, JSON.stringify({ t: Date.now(), d: j })); } catch {} }
+      this.setOnline(true);
+      return j;
+    }).catch(e => {
+      clearTimeout(t);
+      const netFail = e instanceof TypeError || e.name === 'AbortError';
+      if (netFail) {
+        this.setOnline(false);
+        if (isGet) { try { const c = JSON.parse(localStorage.getItem(key)); if (c && c.d !== undefined) { if (!this.cacheAge || c.t < this.cacheAge) this.cacheAge = c.t; return c.d; } } catch {} }
+        throw new Error(this.where === 'offline' ? 'Your L.A.B is out of reach right now.' : 'Could not reach your L.A.B.');
+      }
+      throw e;
+    });
+  },
+
+  // --- reachability: home first, then the away (Tailscale) address ---
+  online: true, where: 'home', cacheAge: 0, _recheck: null,
+  ping(url) { const ac = new AbortController(), t = setTimeout(() => ac.abort(), 2500); return fetch(url + '/api/health', { signal: ac.signal }).then(r => r.ok).catch(() => false).finally(() => clearTimeout(t)); },
+  async pickServer() {
+    const home = this.store.get('server') || (await this.invoke('server_url')) || window.LAB_CONFIG.SERVER;
+    const away = this.store.get('server_away');
+    if (await this.ping(home)) return { url: home, where: 'home' };
+    if (away && await this.ping(away)) return { url: away, where: 'away' };
+    return { url: home, where: 'offline' };
+  },
+  setOnline(on) {
+    if (on === this.online && (on || this._recheck)) return;
+    this.online = on;
+    if (on) { if (this.where === 'offline') this.where = 'home'; clearInterval(this._recheck); this._recheck = null; this.cacheAge = 0; }
+    else if (!this._recheck) {
+      this.where = 'offline';
+      this._recheck = setInterval(async () => { const s = await this.pickServer(); if (s.where !== 'offline') { this.ctx.server = s.url; this.where = s.where; this.setOnline(true); this.paintFoot(); if (this.active) this.go(this.active); } }, 45000);
+    }
+    this.paintFoot();
+  },
+  paintFoot() {
+    const f = document.getElementById('side-foot');
+    if (f) f.textContent = (this.ctx.device ? 'native · ' : 'web · ') + 'v' + window.LAB_CONFIG.APP_VERSION + ' · ' + this.where;
+    const bar = document.getElementById('netbar');
+    if (bar) { bar.hidden = this.online; if (!this.online) bar.textContent = 'Offline — showing what your L.A.B last said' + (this.cacheAge ? ' (as of ' + new Date(this.cacheAge).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ')' : '') + '. Reconnecting quietly.'; }
+  },
   store: {
     get(k) { try { return JSON.parse(localStorage.getItem('labapp_' + k)); } catch { return null; } },
     set(k, v) { localStorage.setItem('labapp_' + k, JSON.stringify(v)); if (LAB.prefs.SYNCED.includes(k)) LAB.prefs.push(); },
@@ -107,8 +157,10 @@ const LAB = (window.LAB = {
   async boot() {
     // identity: reuse the account created via the web hub / wizard
     this.ctx.me = this.store.get('account');
-    // server: your override (Settings) > launch env (LAB_SERVER) > built-in default
-    this.ctx.server = this.store.get('server') || (await this.invoke('server_url')) || window.LAB_CONFIG.SERVER;
+    // server: home address (your override > launch env > built-in) if it answers, else the away address, else offline on the home address
+    const picked = await this.pickServer();
+    this.ctx.server = picked.url; this.where = picked.where; this.online = picked.where !== 'offline';
+    if (!this.online) this.setOnline(false);
     // native device probe (real, only in the compiled app)
     this.ctx.device = await this.invoke('device_info');
     // personalization profile from the install wizard (if any). The wizard also
@@ -127,8 +179,7 @@ const LAB = (window.LAB = {
     try { const sv = this.store.get('skinvars'); if (sv) this.applySkin(sv); } catch {}
     try { this.look.apply(); } catch {}
     if (this.ctx.me) await this.prefs.pull().catch(() => false);
-    // footer
-    document.getElementById('side-foot').textContent = (this.ctx.device ? 'native · ' : 'web · ') + 'v' + window.LAB_CONFIG.APP_VERSION;
+    this.paintFoot();
     this.renderNav();
     if (this.genpages) this.genpages.load();   // tabs made by your builders that you've added
     this.go(this.store.get('lastPage') || (this.visiblePages()[0] && this.visiblePages()[0].id));

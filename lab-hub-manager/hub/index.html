@@ -159,6 +159,11 @@
         <div class="status"><i></i><span id="conn">Connected to your L.A.B server</span></div>
       </div>
       <div class="card">
+        <h3>Ask The Sauce <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">your home AI, on your server</span></h3>
+        <div class="row"><input type="text" id="sq-in" placeholder="What's on tonight? · add milk to the list · lights off in the lounge" maxlength="500"><button class="btn pri" id="sq-go">Ask</button></div>
+        <div id="sq-out" style="font-size:14px;line-height:1.55;margin-top:10px;color:var(--txt2)">It knows the family calendar, the list and the house — and only acts when you ask.</div>
+      </div>
+      <div class="card">
         <h3>Shared to-do <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">everyone sees this</span></h3>
         <div class="row"><input type="text" id="td-in" placeholder="Add something for the family…"><button class="btn pri" id="td-add">Add</button></div>
         <div class="list" id="td-list"></div>
@@ -295,6 +300,21 @@
   }
   $('ev-add').onclick=async()=>{ const title=$('ev-title').value.trim(),day=$('ev-day').value; if(!title||!day)return;
     $('ev-title').value=''; await api('/api/shared/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,day,by:me&&me.name})}); loadEvents(); };
+
+  // ---- Ask The Sauce (phones included) ----
+  let sqHist=[];
+  async function askSauce(){
+    const t=$('sq-in').value.trim(); if(!t) return; $('sq-in').value=''; $('sq-go').disabled=true;
+    $('sq-out').innerHTML=`<div style="opacity:.6">${esc(t)}</div><div>…</div>`;
+    try{
+      const r=await api('/api/sauce/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:me&&me.id,name:me&&me.name,message:t,history:sqHist.slice(-4)})});
+      sqHist.push({role:'user',text:t},{role:'assistant',text:r.reply});
+      $('sq-out').innerHTML=`<div style="opacity:.6">${esc(t)}</div><div style="color:var(--txt)">${esc(r.reply).replace(/\n/g,'<br>')}</div>`+(r.did&&r.did.length?`<div style="margin-top:6px;font-size:12px;color:var(--a1)">⚡ ${r.did.map(esc).join(' · ')}</div>`:'');
+      if(r.did&&r.did.length){ loadTodos(); loadEvents(); if(typeof loadRooms==='function') loadRooms(); }
+    }catch{ $('sq-out').textContent='The Sauce is out of reach right now.'; }
+    $('sq-go').disabled=false;
+  }
+  $('sq-go').onclick=askSauce; $('sq-in').addEventListener('keydown',e=>{ if(e.key==='Enter') askSauce(); });
 
   // ---- family "this week" (only members who switched on share_stats in the app) ----
   const KC={Gaming:'#ff9e6b',Work:'#9a86ff',Creativity:'#ffcf6f',Browsing:'#6fb4ff',Comms:'#7ee2b8',Entertainment:'#ff7bb0',Other:'#98a1ba'};
