@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS pin TEXT;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS avatar JSONB;    -- {emoji, color}
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS privacy JSONB;   -- {share_stats, share_calendar}
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS prefs JSONB;     -- app prefs synced across your installs: {widgets, look, skin, skinvars, updated_at}
 CREATE UNIQUE INDEX IF NOT EXISTS accounts_name_lower ON accounts (lower(name));
 CREATE TABLE IF NOT EXISTS admins (
   id TEXT PRIMARY KEY,
@@ -365,7 +366,9 @@ const accounts = {
     `SELECT d.id, d.name, d.kind, d.os, d.last_seen,
        (SELECT count(*) FROM usage_samples u WHERE u.device_id=d.id AND u.ts > now() - interval '7 days' AND NOT u.idle)::int AS active_7d
      FROM devices d WHERE d.account_id=$1 ORDER BY d.last_seen DESC NULLS LAST`, [id]).then(r => r.rows),
-  profiles: (id) => pool.query('SELECT id,os,hostname,archetype,created_at FROM device_profiles WHERE account_id=$1 ORDER BY created_at DESC', [id]).then(r => r.rows)
+  profiles: (id) => pool.query('SELECT id,os,hostname,archetype,created_at FROM device_profiles WHERE account_id=$1 ORDER BY created_at DESC', [id]).then(r => r.rows),
+  getPrefs: (id) => pool.query('SELECT prefs FROM accounts WHERE id=$1', [id]).then(r => (r.rows[0] && r.rows[0].prefs) || null),
+  setPrefs: (id, prefs) => pool.query('UPDATE accounts SET prefs=COALESCE(prefs, \'{}\'::jsonb) || $2::jsonb WHERE id=$1 RETURNING prefs', [id, JSON.stringify(prefs)]).then(r => (r.rows[0] && r.rows[0].prefs) || null)
 };
 
 // Telemetry firehose — what the Dev Team learns from

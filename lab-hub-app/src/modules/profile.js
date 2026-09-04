@@ -14,6 +14,8 @@ async function signIn(mode, name, pin) {
   // this PC becomes yours: link its device + any samples it sent before you signed in
   if (LAB.isNative() && LAB.telemetry) LAB.api('/api/usage/link', { method: 'POST', headers: J, body: JSON.stringify({ device_id: LAB.telemetry.deviceId(), account_id: a.id }) }).catch(() => {});
   LAB.api('/api/events', { method: 'POST', headers: J, body: JSON.stringify({ account_id: a.id, type: 'login', payload: { name: a.name, app: 'hub-app' } }) }).catch(() => {});
+  // your dashboard, look and theme follow you: pull them if you've saved any; otherwise push this install's
+  if (!(await LAB.prefs.pull().catch(() => false))) LAB.prefs.push();
   LAB.renderNav();
   return a;
 }

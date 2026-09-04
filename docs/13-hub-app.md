@@ -64,6 +64,10 @@ The app signs in with the same **name + PIN** as the family Hub (Profile page). 
 
 The install wizard, after analysing the PC, writes a note — `%LOCALAPPDATA%\LAB\profile.json` / `~/Library/Application Support/LAB/profile.json` / `~/.config/lab/profile.json` — with the profile id and who signed in. `boot()` reads it once via `profile_hint`, so the app is personalised **and signed in** on first launch.
 
+## Pages made by the builders
+
+The server's AI team can ship three artifact kinds: **skins** (CSS variables), **widgets** (tips / checklist / focus) and **pages** — whole tabs defined as sections of typed blocks (`text`, `list`, `links`, `metric`, `checklist`, `steps`). `builders.js` sanitises the model's output first (tolerant item extraction, http(s)-only links, ≤6 sections × ≤10 items), **strips anything that looks like an invented network fact** (IPs, `*.lan`/`*.local` hosts, ports) unless it came from the brief, then validates what's left; only valid pages publish. `modules/genpages.js` turns the ones you switch on (App Store → "By your builders") into sidebar tabs rendered by trusted templates — generated content is data, never markup. Links open externally.
+
 ## Looks
 
 `LAB.look` = layout overhaul (`classic` / `compact` rail / `topbar`) + effects (`glass`, `glow`, `calm`, `dense`) as `<html>` classes, saved per install and applied at boot. Colour themes come from the server's builders (`/api/hub/generations`) as CSS-variable sets. All of it is in the App Store.

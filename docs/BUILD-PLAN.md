@@ -64,16 +64,28 @@
 - [ ] After CI: confirm the release exists, run `/api/app/sync`, check `/api/app/targets` shows mac + linux builds.
 
 ### 10 · Next (in priority order)
-- [ ] Tray icon + minimise-to-tray + notifications (family events / to-dos) — one native chunk.
-- [ ] Per-account widget layout + looks sync (server `account_prefs`), so a new install of yours looks like yours.
-- [ ] Web hub: per-member stats card when `privacy.share_stats` is on.
-- [ ] Builders: a `page` artifact kind (structured page definitions rendered by trusted templates) so the AI team can ship whole tabs.
-- [ ] Wizard: pick Mac arch (arm64/x64) for `/app/download/mac`.
+- [x] Tray icon (Open / Quit, left-click opens), close-to-tray (Settings toggle, verified: WM_CLOSE → process alive, window hidden), autostart now launches `--minimized` into the tray, OS notifications via Rust `notify`; `modules/notify.js` reminds 15 min before timed calendar events (once, toggle in Settings).
+- [x] Per-account prefs sync: `accounts.prefs` + `GET/PUT /api/accounts/:id/prefs` (whitelisted keys, merge); app pushes on any widgets/look/theme change (debounced) and pulls on boot + sign-in. Smoke-tested.
+- [x] Web hub "This week" card: `/api/family/stats` (M-000022) — only members with `share_stats`, kinds + top app, avatar; honest empty state otherwise.
+- [x] Builders `page` kind (M-000023): `generatePage` (blocks text/list/links/metric/checklist/steps), sanitise-then-validate, **invented network facts stripped** (the first attempt hallucinated `hub.lan`/IPs — now impossible), Dev Team standup can pick `build:"page"`, `/api/hub/generations.pages`; app `modules/genpages.js` renders them via trusted templates, opt-in from App Store → "By your builders". First real page ("Chores") generated + published on the server.
+- [x] Wizard: Mac wizard sends `?arch=$(uname -m)`; `/app/download/mac` picks arm64 vs x64 dmg. LICENSE now carries the full GPLv3 text.
+
+### 11 · Next wave (pick top-down)
+- [ ] The Sauce knows the calendar + list: pass today's/tomorrow's merged events and open to-dos into `sauce.ask` context so "what's on tonight?" and "what's left on the list?" answer truthfully.
+- [ ] Family calendar **export**: `GET /api/calendar/family.ics` (VCALENDAR of shared_events + shared feeds) so phones can subscribe the other way; link it from the web hub + app Calendar page.
+- [ ] Admin: generations desk — list staged/published skins/widgets/pages with publish/reject + "Generate now" buttons; shows the sanitiser's dropped-items count.
+- [ ] Web hub "Get the App": show version + notes from `/api/app/version`; Mac button passes arch.
+- [ ] Kiosk: "This week" + "Coming up" from the merged endpoints.
+- [ ] Stats: click a day → that day's timeline (runs of app/kind) from a new `/api/usage/day?device_id&date&tz`.
+- [ ] Windows wizard: after download, offer to launch the installer.
+- [ ] Sauce quick-ask widget history (last 3 exchanges) persisted per install.
 
 ---
 
 ## Log
 - 2026-09-04 00:55 — Run started. Cron installed. Plan written. Repo public; CI re-fired on `app-v0.1.0`.
+- 2026-09-04 10:27 — **0.2.1 released** (tray/close-to-tray/reminders, prefs sync, family This-week, Mac arch, builders `page` kind with anti-hallucination sanitiser; the Dev Team autonomously shipped a "Handbook" page). Manager M-000023. Windows installer + version.json published; tag `app-v0.2.1` pushed. Chunks 1–10 complete; section 11 is the next wave.
+- 2026-09-04 09:55 — 0.2.0 tagged (`1e88816`, CI + GitHub Release + server sync loop). Then tray/close-to-tray/notifications, prefs sync (M-000022), family "This week", Mac arch pick, LICENSE — all verified; bumping to 0.2.1 for a consistent tag.
 - 2026-09-04 03:45 — Chunks 6+7+8 built + verified: all 10 pages driven in a real browser with zero runtime errors; autostart build launch-verified; web hub + admin pages deployed. Versions bumped to 0.2.0; release build running; `docs/13-hub-app.md` written.
 - 2026-09-04 03:05 — Chunks 4+5 shipped (`4b55d26`, `4b1e376`); installer republished to server app-builds; Chunk 6 written, build pending.
 - 2026-09-04 02:20 — Chunks 2+3 built + verified (server deployed M-000020; parser unit-tested; real ICS feed linked; exe telemetry end-to-end). withGlobalTauri bug found + fixed.

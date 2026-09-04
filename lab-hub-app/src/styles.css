@@ -225,6 +225,10 @@ html.fx-dense .phead h1{font-size:22px}
 .game span{display:block;font-size:11px;color:var(--txt2);margin-top:3px;font-family:var(--mono)}
 .focusrow{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .focusrow .big{font-family:var(--mono);font-size:34px;letter-spacing:.02em}
+/* generated pages */
+.gtext{font-size:14px;line-height:1.6;color:var(--txt);margin:0 0 10px}
+.gtext:last-child{margin-bottom:0}
+.glist{margin:0 0 0 18px;font-size:14px;line-height:1.7}
 /* skins */
 .skins{display:flex;flex-wrap:wrap;gap:8px}
 .skin{border:1px solid var(--stroke);background:var(--panel);color:var(--txt);border-radius:10px;padding:8px 13px;cursor:pointer;font:inherit;font-size:12px;font-weight:600;position:relative;padding-left:26px}

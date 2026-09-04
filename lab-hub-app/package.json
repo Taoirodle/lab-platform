@@ -1,6 +1,6 @@
 {
   "name": "lab-hub-app",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "L.A.B Hub — the personal, modular home-platform desktop app (Tauri, native).",
   "license": "GPL-3.0-or-later",
   "private": true,

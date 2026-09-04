@@ -22,7 +22,7 @@ const conductor = require('./conductor');
 const wizard = require('./wizard');
 const calendar = require('./calendar');
 
-const VERSION = 'M-000021';
+const VERSION = 'M-000023';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
@@ -209,7 +209,13 @@ const OS_META = {
   linux: { label: 'Linux', ext: 'AppImage', wizard: 'lab-setup-linux.sh', mime: 'application/x-sh' }
 };
 // which file in app-builds serves an OS: the canonical extension wins, then anything named after the OS
-const buildFor = (files, os) => { const m = OS_META[os]; return files.find(f => f.toLowerCase().endsWith('.' + m.ext.toLowerCase())) || files.find(f => f.toLowerCase().includes(os)) || null; };
+const buildFor = (files, os, arch) => {
+  const m = OS_META[os]; if (!m) return null;
+  const byExt = files.filter(f => f.toLowerCase().endsWith('.' + m.ext.toLowerCase()));
+  // Macs: Apple silicon (arm64) is the default; an Intel Mac asks with ?arch=x86_64
+  if (os === 'mac' && byExt.length > 1) { const intel = /x86_64|x64|intel/i.test(arch || ''); const pick = byExt.find(f => intel ? /x64|x86_64|intel/i.test(f) : /arm64|aarch64|apple/i.test(f)); if (pick) return pick; }
+  return byExt[0] || files.find(f => f.toLowerCase().includes(os)) || null;
+};
 app.get('/api/app/targets', wrap(async (req, res) => {
   // report which native builds actually exist yet (CI releases sync into ./app-builds)
   const dir = path.join(__dirname, 'app-builds');
@@ -266,7 +272,7 @@ app.get('/app/wizard/:os', wrap(async (req, res) => {
 app.get('/app/download/:os', wrap(async (req, res) => {
   const m = OS_META[req.params.os]; if (!m) return res.status(404).send('unknown OS');
   const dir = path.join(__dirname, 'app-builds');
-  let file = null; try { file = buildFor(require('fs').readdirSync(dir).filter(f => f !== 'version.json'), req.params.os); } catch {}
+  let file = null; try { file = buildFor(require('fs').readdirSync(dir).filter(f => f !== 'version.json'), req.params.os, req.query.arch); } catch {}
   if (!file) return res.status(404).json({ error: 'no native build yet for ' + m.label, hint: 'CI releases sync into ./app-builds' });
   res.download(path.join(dir, file));
 }));
@@ -545,6 +551,35 @@ app.patch('/api/accounts/:id', wrap(async (req, res) => {
   db.audit('account:' + id, 'account.update', { avatar: !!avatar, privacy: !!privacy, pin: !!pin });
   res.json(a);
 }));
+// Family "this week": only members who switched on share_stats in the app; aggregate kinds + top app, nothing finer.
+app.get('/api/family/stats', wrap(async (req, res) => {
+  const [cats, tops] = await Promise.all([
+    db.pool.query(`SELECT a.id, a.name, a.avatar, u.category, count(*)::int AS mins
+      FROM accounts a JOIN devices d ON d.account_id=a.id JOIN usage_samples u ON u.device_id=d.id
+      WHERE (a.privacy->>'share_stats')='true' AND u.ts > now() - interval '7 days' AND NOT u.idle
+      GROUP BY 1,2,3,4`).then(r => r.rows),
+    db.pool.query(`SELECT DISTINCT ON (a.id) a.id, u.app, count(*)::int AS mins
+      FROM accounts a JOIN devices d ON d.account_id=a.id JOIN usage_samples u ON u.device_id=d.id
+      WHERE (a.privacy->>'share_stats')='true' AND u.ts > now() - interval '7 days' AND NOT u.idle AND u.app IS NOT NULL
+      GROUP BY a.id, u.app ORDER BY a.id, mins DESC`).then(r => r.rows)
+  ]);
+  const by = {};
+  for (const r of cats) { const m = by[r.id] || (by[r.id] = { id: r.id, name: r.name, avatar: r.avatar, total: 0, cats: {} }); m.cats[r.category || 'Other'] = r.mins; m.total += r.mins; }
+  for (const t of tops) if (by[t.id]) by[t.id].top_app = t.app;
+  res.json(Object.values(by).sort((a, b) => b.total - a.total));
+}));
+// App prefs synced across your installs (widgets layout, look, theme). Small, whitelisted keys only.
+app.get('/api/accounts/:id/prefs', wrap(async (req, res) => res.json((await db.accounts.getPrefs(Number(req.params.id))) || {})));
+app.put('/api/accounts/:id/prefs', wrap(async (req, res) => {
+  const b = req.body || {}, out = {};
+  if (Array.isArray(b.widgets)) out.widgets = b.widgets.map(String).slice(0, 40);
+  if (b.look && typeof b.look === 'object') out.look = { layout: String(b.look.layout || 'default').slice(0, 20), effects: (b.look.effects || []).map(String).slice(0, 10) };
+  if ('skin' in b) out.skin = b.skin ? String(b.skin).slice(0, 40) : null;
+  if ('skinvars' in b) out.skinvars = b.skinvars && typeof b.skinvars === 'object' ? Object.fromEntries(Object.entries(b.skinvars).filter(([k, v]) => /^--[a-z0-9]+$/.test(k) && typeof v === 'string' && v.length < 40).slice(0, 12)) : null;
+  if (!Object.keys(out).length) return res.status(400).json({ error: 'nothing to save' });
+  out.updated_at = new Date().toISOString();
+  res.json((await db.accounts.setPrefs(Number(req.params.id), out)) || {});
+}));
 // The app links its device (and its earlier anonymous samples) to the account that signs in on it
 app.post('/api/usage/link', wrap(async (req, res) => {
   const b = req.body || {}; const dev = String(b.device_id || '').slice(0, 80), acct = Number(b.account_id);
@@ -615,6 +650,7 @@ app.get('/api/feedback', wrap(async (req, res) => {
 app.get('/api/generations', wrap(async (req, res) => res.json(await builders.list({ kind: req.query.kind, status: req.query.status }))));
 app.post('/api/generations/skin', wrap(async (req, res) => res.json(await builders.generateSkin({ brief: (req.body && req.body.brief) || '' }))));
 app.post('/api/generations/widget', wrap(async (req, res) => res.json(await builders.generateWidget({ brief: (req.body && req.body.brief) || '' }))));
+app.post('/api/generations/page', wrap(async (req, res) => res.json(await builders.generatePage({ brief: (req.body && req.body.brief) || '' }))));
 app.post('/api/generations/:id/:decision', wrap(async (req, res) => {
   const d = req.params.decision;
   if (!['publish', 'reject', 'stage'].includes(d)) return res.status(400).json({ error: 'bad decision' });
@@ -625,11 +661,12 @@ app.post('/api/generations/:id/:decision', wrap(async (req, res) => {
 }));
 // what the Hub reads: published skins + widgets
 app.get('/api/hub/generations', wrap(async (req, res) => {
-  const [skins, widgets] = await Promise.all([
+  const [skins, widgets, pages] = await Promise.all([
     builders.list({ kind: 'skin', status: 'published' }),
-    builders.list({ kind: 'widget', status: 'published' })
+    builders.list({ kind: 'widget', status: 'published' }),
+    builders.list({ kind: 'page', status: 'published' })
   ]);
-  res.json({ skins, widgets });
+  res.json({ skins, widgets, pages });
 }));
 
 // ---- Research agents ----

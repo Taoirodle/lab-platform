@@ -502,8 +502,60 @@ fn recent_files() -> Vec<RecentFile> {
     out
 }
 
-// ---------------------------------------------------------------- settings helpers
+// ---------------------------------------------------------------- tray, close-to-tray, notifications
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_notification::NotificationExt;
+
+/// Closing the window hides it to the tray instead of quitting (Settings toggle).
+pub struct CloseToTray(pub Mutex<bool>);
+
+fn show_main(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
+fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let open = MenuItem::with_id(app, "open", "Open L.A.B Hub", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let mut b = TrayIconBuilder::with_id("main").menu(&menu).tooltip("L.A.B Hub").show_menu_on_left_click(false);
+    if let Some(icon) = app.default_window_icon() { b = b.icon(icon.clone()); }
+    b.on_menu_event(|app, e| match e.id().as_ref() {
+        "open" => show_main(app),
+        "quit" => app.exit(0),
+        _ => {}
+    })
+    .on_tray_icon_event(|tray, event| {
+        if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+            show_main(tray.app_handle());
+        }
+    })
+    .build(app)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn close_to_tray_get(state: tauri::State<'_, CloseToTray>) -> bool { *state.0.lock().unwrap() }
+
+#[tauri::command]
+fn close_to_tray_set(state: tauri::State<'_, CloseToTray>, enable: bool) -> bool { *state.0.lock().unwrap() = enable; enable }
+
+/// OS notification (used for upcoming family events etc.). Never for marketing.
+#[tauri::command]
+fn notify(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
+    app.notification().builder().title(title.chars().take(80).collect::<String>()).body(body.chars().take(240).collect::<String>()).show().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn hide_window(app: tauri::AppHandle) { if let Some(w) = app.get_webview_window("main") { let _ = w.hide(); } }
+
+// ---------------------------------------------------------------- settings helpers
 
 /// Is "start with your PC" on? (None if the platform can't say.)
 #[tauri::command]
@@ -533,13 +585,30 @@ fn save_to_downloads(name: String, content: String) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // started by autostart with --minimized → live in the tray until asked for
+    let start_hidden = std::env::args().any(|a| a == "--minimized");
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
+        .plugin(tauri_plugin_notification::init())
         .manage(Telemetry(Mutex::new(System::new_all())))
+        .manage(CloseToTray(Mutex::new(true)))
+        .setup(move |app| {
+            setup_tray(app.handle())?;
+            if start_hidden { if let Some(w) = app.get_webview_window("main") { let _ = w.hide(); } }
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" && *window.state::<CloseToTray>().0.lock().unwrap() {
+                    let _ = window.hide();
+                    api.prevent_close();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             device_info, server_url, profile_hint, quick_load, usage_snapshot, game_library, recent_files,
-            autostart_enabled, autostart_set, save_to_downloads
+            autostart_enabled, autostart_set, save_to_downloads, close_to_tray_get, close_to_tray_set, notify, hide_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running L.A.B Hub");

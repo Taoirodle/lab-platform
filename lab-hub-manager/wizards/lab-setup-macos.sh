@@ -36,8 +36,8 @@ PID=$(printf '%s' "$RES" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'); SAFE=$(printf 
 mkdir -p "$HOME/Library/Application Support/LAB" && printf '{"id":"%s","account_id":%s,"account_name":"%s","server":"%s"}\n' "$PID" "$AID" "$SAFE" "$SERVER" > "$HOME/Library/Application Support/LAB/profile.json"
 
 echo "  Checking for your app build..."
-if curl -fsSL "$SERVER/app/download/mac" -o "$HOME/Downloads/L.A.B-Hub.app.zip" 2>/dev/null; then
-  echo "  ✓ Downloaded to ~/Downloads — unzip and drag to Applications."
+if curl -fsSL "$SERVER/app/download/mac?arch=$(uname -m)" -o "$HOME/Downloads/L.A.B-Hub.dmg" 2>/dev/null; then
+  echo "  ✓ Downloaded to ~/Downloads/L.A.B-Hub.dmg — open it and drag L.A.B Hub to Applications."
 else
   echo "  · The native macOS build isn't published yet. Your profile is saved for when it lands."
 fi

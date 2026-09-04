@@ -169,6 +169,10 @@
         <div class="row"><button class="btn pri" id="ev-add" style="width:100%">Add to family calendar</button></div>
         <div class="list" id="ev-list"></div>
       </div>
+      <div class="card">
+        <h3>This week <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">who chose to share</span></h3>
+        <div class="list" id="fam-stats"></div>
+      </div>
     </div>
   </div>
 
@@ -291,6 +295,19 @@
   $('ev-add').onclick=async()=>{ const title=$('ev-title').value.trim(),day=$('ev-day').value; if(!title||!day)return;
     $('ev-title').value=''; await api('/api/shared/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,day,by:me&&me.name})}); loadEvents(); };
 
+  // ---- family "this week" (only members who switched on share_stats in the app) ----
+  const KC={Gaming:'#ff9e6b',Work:'#9a86ff',Creativity:'#ffcf6f',Browsing:'#6fb4ff',Comms:'#7ee2b8',Entertainment:'#ff7bb0',Other:'#98a1ba'};
+  const hm=m=>m>=60?Math.floor(m/60)+'h '+String(m%60).padStart(2,'0')+'m':m+'m';
+  async function loadFamilyStats(){
+    const list=await api('/api/family/stats').catch(()=>[]);
+    $('fam-stats').innerHTML=list.length?list.map(m=>{const av=m.avatar||{};const cats=Object.entries(m.cats).sort((a,b)=>b[1]-a[1]);return `<div class="ev">
+      <div style="width:36px;height:36px;border-radius:11px;display:grid;place-items:center;font-size:19px;flex:none;background:${esc(av.color||'#9a86ff')}">${esc(av.emoji||'🙂')}</div>
+      <div style="flex:1;min-width:0"><div class="ttl">${esc(m.name)} <span style="color:var(--txt2);font-weight:400">· ${hm(m.total)}</span></div>
+        <div style="display:flex;height:6px;border-radius:4px;overflow:hidden;background:rgba(255,255,255,.06);margin:6px 0 4px">${cats.map(([k,v])=>`<i style="display:block;height:100%;width:${(100*v/m.total).toFixed(1)}%;background:${KC[k]||KC.Other}" title="${esc(k)}"></i>`).join('')}</div>
+        <div class="tm">${cats.slice(0,3).map(([k,v])=>esc(k)+' '+hm(v)).join(' · ')}${m.top_app?' · mostly '+esc(m.top_app):''}</div></div></div>`;}).join('')
+      :'<div class="empty">Nobody is sharing their stats yet. In the app: Profile → "What the family can see".</div>';
+  }
+
   // ---- house map ----
   const bulb=`<svg class="bulb" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 3a9 9 0 0 0-5 16.5V23h10v-3.5A9 9 0 0 0 16 3z"/><path d="M12 27h8M13 30h6"/></svg>`;
   async function loadHouse(){
@@ -360,7 +377,7 @@
     $('s-acct').textContent=me.name;
     tick(); setInterval(tick,1000);
     try{const id=await api('/api/identity'); $('hosted').textContent='hosted by '+id.node; $('s-node').textContent=id.node; $('foot').textContent='L.A.B Hub · shared family surface · from '+id.node;}catch{}
-    loadTodos(); loadEvents(); loadTargets(); loadSkins();
+    loadTodos(); loadEvents(); loadFamilyStats(); loadTargets(); loadSkins();
     setInterval(loadTodos,15000); setInterval(loadEvents,20000);
     api('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:me.id,type:'page',payload:{page:'web-hub'}})}).catch(()=>{});
     if(boot){boot.done();boot=null;}

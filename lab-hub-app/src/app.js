@@ -20,6 +20,7 @@ const LAB = (window.LAB = {
     if (i >= 0) this.pages[i] = mod; else this.pages.push(mod);
     this.pages.sort((a, b) => (a.order || 99) - (b.order || 99));
   },
+  unregister(id) { this.pages = this.pages.filter(p => p.id !== id); if (this.active === id) this.go(this.visiblePages()[0] && this.visiblePages()[0].id); },
 
   // --- helpers shared by every page ---
   el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; },
@@ -27,8 +28,34 @@ const LAB = (window.LAB = {
   api(path, opts) { return fetch(this.ctx.server + path, opts).then(async r => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'error'); return j; }); },
   store: {
     get(k) { try { return JSON.parse(localStorage.getItem('labapp_' + k)); } catch { return null; } },
-    set(k, v) { localStorage.setItem('labapp_' + k, JSON.stringify(v)); },
-    del(k) { localStorage.removeItem('labapp_' + k); }
+    set(k, v) { localStorage.setItem('labapp_' + k, JSON.stringify(v)); if (LAB.prefs.SYNCED.includes(k)) LAB.prefs.push(); },
+    del(k) { localStorage.removeItem('labapp_' + k); if (LAB.prefs.SYNCED.includes(k)) LAB.prefs.push(); }
+  },
+
+  // --- prefs that follow you between installs (widgets layout, look, theme) ---
+  prefs: {
+    SYNCED: ['widgets', 'look', 'skin', 'skinvars'], timer: null, pulling: false,
+    push() {
+      if (!LAB.ctx.me || this.pulling) return;
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => {
+        const body = { widgets: LAB.store.get('widgets') || LAB.widgets.DEFAULT, look: LAB.look.get(), skin: LAB.store.get('skin'), skinvars: LAB.store.get('skinvars') };
+        LAB.api('/api/accounts/' + LAB.ctx.me.id + '/prefs', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
+      }, 1500);
+    },
+    async pull() {
+      if (!LAB.ctx.me) return false;
+      let p = null; try { p = await LAB.api('/api/accounts/' + LAB.ctx.me.id + '/prefs'); } catch { return false; }
+      if (!p || !p.updated_at) return false;
+      this.pulling = true;
+      try {
+        if (Array.isArray(p.widgets)) LAB.store.set('widgets', p.widgets);
+        if (p.look) { LAB.store.set('look', p.look); LAB.look.apply(); }
+        if (p.skin && p.skinvars) { LAB.store.set('skin', p.skin); LAB.store.set('skinvars', p.skinvars); LAB.applySkin(p.skinvars); }
+        else if (p.skin === null) { LAB.store.del('skin'); LAB.store.del('skinvars'); LAB.applySkin(null); }
+      } finally { this.pulling = false; }
+      return true;
+    }
   },
 
   // --- native bridge (Tauri commands; graceful no-op in a plain browser) ---
@@ -96,12 +123,14 @@ const LAB = (window.LAB = {
       }
     }
     if (pid) this.ctx.profile = await this.api('/api/wizard/profile/' + pid).catch(() => null);
-    // apply saved skin + look
+    // apply saved skin + look, then let your synced prefs (if you're signed in) win
     try { const sv = this.store.get('skinvars'); if (sv) this.applySkin(sv); } catch {}
     try { this.look.apply(); } catch {}
+    if (this.ctx.me) await this.prefs.pull().catch(() => false);
     // footer
     document.getElementById('side-foot').textContent = (this.ctx.device ? 'native · ' : 'web · ') + 'v' + window.LAB_CONFIG.APP_VERSION;
     this.renderNav();
+    if (this.genpages) this.genpages.load();   // tabs made by your builders that you've added
     this.go(this.store.get('lastPage') || (this.visiblePages()[0] && this.visiblePages()[0].id));
     // remember last page
     const _go = this.go.bind(this); this.go = (id) => { this.store.set('lastPage', id); _go(id); };

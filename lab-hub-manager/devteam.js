@@ -128,7 +128,8 @@ Aggressiveness ${aggressiveness}/10. Propose exactly ${count} improvement(s) tha
 Where a proposal can be produced as a real artifact right now, say so with "build":
 - "skin"  → a new Hub colour theme (you will actually generate it).
 - "widget" → a new dashboard card (tips / checklist / focus).
-- "none"  → a change that needs human hands (code beyond skins/widgets) — propose it, it gets filed.
+- "page"  → a whole new tab for the personal app (sections of text / list / links / metric / checklist / steps) — people add it from the App Store.
+- "none"  → a change that needs human hands (code beyond skins/widgets/pages) — propose it, it gets filed.
 
 ${RUBRIC}
 
@@ -138,7 +139,7 @@ Return ONLY a JSON array, each element exactly:
  "service": one of "Hub / Interface","Fleet / MDM","Security","Performance","Infra","Generation",
  "summary": ONE line, <=120 chars,
  "path": one-line update path,
- "build": "skin" | "widget" | "none",
+ "build": "skin" | "widget" | "page" | "none",
  "brief": short brief for the artifact if build != none (<=140 chars),
  "size_bytes": integer estimate,
  "significance": integer 1-10 per the rubric}`;
@@ -151,7 +152,7 @@ Return ONLY a JSON array, each element exactly:
     service: String(p.service || 'Hub / Interface').slice(0, 32),
     summary: String(p.summary || '').slice(0, 160),
     path: String(p.path || '').slice(0, 90),
-    build: ['skin', 'widget'].includes(p.build) ? p.build : 'none',
+    build: ['skin', 'widget', 'page'].includes(p.build) ? p.build : 'none',
     brief: String(p.brief || '').slice(0, 160),
     size_bytes: Math.max(1000, Math.round(Number(p.size_bytes)) || 250000),
     significance: clampSig(Number(p.significance)),
@@ -197,10 +198,10 @@ async function standup(mode = 'scheduled') {
     for (const p of proposals) {
       // If the proposal is a real artifact, actually build it now.
       let artifact = null;
-      if (p.build === 'skin' || p.build === 'widget') {
+      if (p.build === 'skin' || p.build === 'widget' || p.build === 'page') {
         try {
-          artifact = p.build === 'skin'
-            ? await builders.generateSkin({ brief: p.brief, agent: p.agent })
+          artifact = p.build === 'skin' ? await builders.generateSkin({ brief: p.brief, agent: p.agent })
+            : p.build === 'page' ? await builders.generatePage({ brief: p.brief, agent: p.agent })
             : await builders.generateWidget({ brief: p.brief, agent: p.agent });
           await ledgers.signal('team', 'global', 'built:' + p.build).catch(() => {});
         } catch (e) { await db.audit(p.agent, 'devteam.build.fail', { build: p.build, error: String(e.message || e) }).catch(() => {}); }

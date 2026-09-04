@@ -34,6 +34,7 @@ LAB.register({ id: 'appstore', label: 'App Store', icon: I.store, order: 5,
     ]);
     const apps = store.apps || [], installed = new Set(inst.installed || []);
     const CATS = [{ k: 'suggested', label: 'Suggested' }, ...(store.categories || []).map(c => ({ k: 'cat:' + c, label: c })),
+      { k: 'pages', label: 'By your builders' },
       { k: 'overhaul', label: 'Hub overhauls' }, { k: 'effect', label: 'Effects' }, { k: 'skin', label: 'Colour / themes' }, { k: 'widget', label: 'Widgets' }];
     const ss = box.querySelector('#ss'), sm = box.querySelector('#sm');
     let cur = 'suggested', open = null;
@@ -58,6 +59,11 @@ LAB.register({ id: 'appstore', label: 'App Store', icon: I.store, order: 5,
         html = feat.map(appCard).join('') + (ctx.me ? '' : '<div class="muted full">Sign in on Profile to install apps — everything else here works right away.</div>');
       } else if (cur.startsWith('cat:')) {
         const list = apps.filter(a => a.category === cur.slice(4)); html = list.length ? list.map(appCard).join('') : soon(cur.slice(4) + ' apps');
+      } else if (cur === 'pages') {
+        const pages = (LAB.genpages && LAB.genpages.list) || [];
+        html = pages.map(g => lookCard(g.title || g.name, (g.summary || '') + (g.agent ? ' · by ' + g.agent : ''), LAB.genpages.has(g.id), `data-page="${LAB.esc(g.id)}"`)).join('')
+          + '<div class="muted full">Whole tabs your L.A.B builders designed from what the family uses. "On" puts it in your sidebar; nothing is added without you.</div>'
+          + (pages.length ? '' : '<div class="muted full">Nothing published yet — the builders propose pages as the ledgers grow.</div>');
       } else if (cur === 'overhaul') {
         const l = LAB.look.get().layout || 'default';
         html = LAYOUTS.map(x => lookCard(x.title, x.sub, l === x.id, `data-layout="${x.id}"`)).join('') + '<div class="muted full">Overhauls change the shape of this app. Full reskins from your builders will show up here too.</div>';
@@ -90,8 +96,10 @@ LAB.register({ id: 'appstore', label: 'App Store', icon: I.store, order: 5,
         paint();
       });
       sm.querySelectorAll('[data-widget]').forEach(b => b.onclick = () => { const id = b.dataset.widget; if (LAB.widgets.has(id)) LAB.widgets.remove(id); else LAB.widgets.add(id); paint(); });
+      sm.querySelectorAll('[data-page]').forEach(b => b.onclick = () => { const id = b.dataset.page; if (LAB.genpages.has(id)) LAB.genpages.remove(id); else LAB.genpages.add(id); paint(); });
     }
     await LAB.widgets.loadGenerated();
+    if (LAB.genpages) await LAB.genpages.load();
     paint();
   }
 });

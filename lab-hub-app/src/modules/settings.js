@@ -43,6 +43,14 @@ LAB.register({ id: 'settings', label: 'Settings', icon: I.cog, order: 10,
       const paintAuto = async () => { const en = await LAB.invoke('autostart_enabled'); if (en == null) { ab.textContent = 'n/a'; ab.disabled = true; return; } ab.textContent = en ? 'On' : 'Off'; ab.classList.toggle('pri', !!en); };
       ab.onclick = async () => { const en = await LAB.invoke('autostart_enabled'); await LAB.invoke('autostart_set', { enable: !en }); paintAuto(); };
       paintAuto();
+      const tray = LAB.el('div', 'card'); el.appendChild(tray);
+      const ctt = await LAB.invoke('close_to_tray_get');
+      const rem = LAB.store.get('reminders') !== false;
+      tray.innerHTML = `<h3>In the background</h3>
+        <div class="prow"><span>Keep running in the tray when the window is closed (quit from the tray icon).</span><button class="btn ${ctt ? 'pri' : ''}" id="ct-tog">${ctt ? 'On' : 'Off'}</button></div>
+        <div class="prow"><span>Remind me 15 minutes before calendar events (one OS notification, nothing else).</span><button class="btn ${rem ? 'pri' : ''}" id="rm-tog">${rem ? 'On' : 'Off'}</button></div>`;
+      tray.querySelector('#ct-tog').onclick = async () => { await LAB.invoke('close_to_tray_set', { enable: !ctt }); LAB.go('settings'); };
+      tray.querySelector('#rm-tog').onclick = () => { LAB.store.set('reminders', !rem); if (!rem) LAB.notify.start(); else LAB.notify.stop(); LAB.go('settings'); };
     }
 
     // ---- theme ----
