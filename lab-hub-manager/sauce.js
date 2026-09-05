@@ -41,7 +41,7 @@ function toolDoc(house) {
 Available scenes: ${(house.scenes || []).map(s => s.name).join(', ') || '(none)'}
 Rooms: ${(house.rooms || []).map(r => `${r.id} (${r.on ? 'on' : 'off'})`).join(', ') || '(none)'}
 Devices by name: ${(house.devices || []).map(d => `${d.name} [${d.room}, ${d.on ? 'on' : 'off'}]`).join('; ') || '(none)'}
-Calendar (today + tomorrow, real): ${ev || '(nothing on)'}
+Calendar (today + the next 7 days, real — beyond that you don't know): ${ev || '(nothing on in the next 7 days)'}
 Open family to-dos (real): ${todos || '(list is clear)'}
 
 Actions you may emit in "actions":

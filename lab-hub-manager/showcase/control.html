@@ -34,13 +34,18 @@
   <input id="names" placeholder="Mom, Dad, [Brother]" value="Mom, Dad, [Brother]">
   <label>Joining now (for the onboarding cue)</label>
   <input id="joiner" placeholder="Mom">
+  <label>Ask The Sauce live (the TV shows the real answer)</label>
+  <input id="ask" placeholder="What's on tonight? · add milk to Groceries · lights off in the lounge" value="What's on tonight?">
 
   <div class="row">
     <button class="cue big" data-cue="intro">▶ Open the show<small>Cube + "The home, handled."</small></button>
     <button class="cue" data-cue="greet" data-names>Greet the family<small>By name, one by one</small></button>
     <button class="cue red" data-cue="motion">Motion reveal<small>Flash + "the house noticed"</small></button>
     <button class="cue" data-cue="guardian" style="border-color:#5fe08a;color:#5fe08a">Guardian<small>Perimeter secure</small></button>
-    <button class="cue warm" data-cue="sauce">The Sauce<small>"Movie night." Lights dim.</small></button>
+    <button class="cue warm" data-cue="sauce" data-ask>Ask The Sauce · live<small>Real answer, real actions</small></button>
+    <button class="cue warm" data-cue="sauce">The Sauce · scripted<small>"Movie night." Lights dim.</small></button>
+    <button class="cue" data-cue="lists" style="border-color:#6fb4ff;color:#6fb4ff">The list<small>Groceries, live from the Hub</small></button>
+    <button class="cue" data-cue="week" style="border-color:#5fe08a;color:#5fe08a">This week<small>Who's sharing + what's on</small></button>
     <button class="cue" data-cue="money" style="border-color:#5fe08a;color:#5fe08a">The money slide<small>Subscriptions replaced</small></button>
     <button class="cue big" data-cue="join" data-joiner>➕ Onboard someone<small>"{name} has joined"</small></button>
     <button class="cue warm" data-cue="curtain" data-names>Curtain call<small>All names + welcome</small></button>
@@ -61,6 +66,7 @@
     const cue=b.dataset.cue, data={};
     if('names' in b.dataset) data.names=$('names').value.split(',').map(s=>s.trim()).filter(Boolean);
     if('joiner' in b.dataset) data.name=$('joiner').value.trim()||'Someone';
+    if('ask' in b.dataset) data.ask=$('ask').value.trim()||"What's on tonight?";
     fire(cue,data);
   });
 </script>

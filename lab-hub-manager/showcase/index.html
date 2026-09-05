@@ -47,7 +47,9 @@
 <div class="stage" id="s-greet"><div class="eyebrow">good evening</div><div class="huge" id="greet-name">—</div></div>
 <div class="stage" id="s-motion"><div class="badge red"><i></i>MOTION DETECTED</div><div class="huge" id="motion-room" style="margin-top:3vh">HALLWAY</div><div class="sub">The house noticed.</div></div>
 <div class="stage" id="s-guardian"><div class="eyebrow">guardian</div><div class="huge" style="font-size:clamp(40px,8vw,110px)">PERIMETER SECURE</div><div class="silh"><i></i><i></i><i></i></div><div class="badge ok"><i></i>SECURITY ONLINE</div></div>
-<div class="stage" id="s-sauce"><div class="eyebrow">the sauce</div><div class="sub" id="sauce-text" style="font-size:clamp(22px,3.4vw,46px);color:var(--txt);font-weight:700;max-width:22ch;line-height:1.25"></div></div>
+<div class="stage" id="s-sauce"><div class="eyebrow">the sauce</div><div class="sub" id="sauce-q" style="font-size:clamp(16px,2vw,26px);color:#9aa4bd;max-width:30ch;margin-bottom:2vh"></div><div class="sub" id="sauce-text" style="font-size:clamp(22px,3.4vw,46px);color:var(--txt);font-weight:700;max-width:22ch;line-height:1.25"></div><div class="badge ok" id="sauce-did" style="display:none"><i></i><span></span></div></div>
+<div class="stage" id="s-lists"><div class="eyebrow" id="lists-name">groceries</div><div class="money" id="lists-items" style="font-weight:600;text-align:left"></div></div>
+<div class="stage" id="s-week"><div class="eyebrow">this week, in the house</div><div class="money" id="week-members" style="font-weight:600"></div><div class="sub" id="week-events" style="margin-top:3vh;font-size:clamp(16px,2vw,26px);color:#9aa4bd"></div></div>
 <div class="stage" id="s-money"><div class="eyebrow">what we replace</div><div class="money" id="money-list"></div><div class="total" id="money-total"></div></div>
 <div class="stage" id="s-join"><div class="eyebrow">now onboarding</div><div class="huge" id="join-name">—</div><div class="sub">has joined the L.A.B</div></div>
 <div class="stage" id="s-curtain"><div class="huge">Welcome<br>to the L<span class="dot">.</span>A<span class="dot">.</span>B</div><div class="sub" id="curtain-names"></div></div>
@@ -75,6 +77,7 @@
 
   // ---- scenes ----
   let cur='idle';
+  const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   function show(id){ document.querySelectorAll('.stage').forEach(s=>s.classList.toggle('on',s.id==='s-'+id)); cur=id; }
   function flash(){ const f=document.getElementById('flash'); f.classList.remove('hit'); void f.offsetWidth; f.classList.add('hit'); setTimeout(()=>f.classList.remove('hit'),650); }
   function typeInto(el,text){ el.textContent=''; let i=0; (function t(){ if(i<=text.length){el.textContent=text.slice(0,i++);setTimeout(t,26);} })(); }
@@ -89,7 +92,17 @@
       const el=document.getElementById('greet-name'); const cyc=()=>{ el.textContent=names[i%names.length]; el.style.animation='none'; void el.offsetWidth; el.style.animation=''; i++; if(i<names.length)setTimeout(cyc,1400); }; cyc(); return; }
     if(cue==='motion'){ hue=[255,90,82]; intensity=1; flash(); document.getElementById('motion-room').textContent=(data.room||'HALLWAY').toUpperCase(); show('motion'); return; }
     if(cue==='guardian'){ hue=[95,224,138]; intensity=.9; show('guardian'); return; }
-    if(cue==='sauce'){ hue=[255,207,111]; intensity=.9; show('sauce'); typeInto(document.getElementById('sauce-text'), data.text||'Movie night. Lights down, week planned, house quiet.'); return; }
+    if(cue==='sauce'){ hue=[255,207,111]; intensity=.9; show('sauce');
+      document.getElementById('sauce-q').textContent=data.question?'“'+data.question+'”':'';
+      const did=document.getElementById('sauce-did'); if(data.did&&data.did.length){ did.style.display='inline-flex'; did.querySelector('span').textContent=data.did.join(' · ').toUpperCase(); } else did.style.display='none';
+      typeInto(document.getElementById('sauce-text'), data.text||'Movie night. Lights down, week planned, house quiet.'); return; }
+    if(cue==='lists'){ hue=[111,180,255]; intensity=.8; show('lists');
+      document.getElementById('lists-name').textContent=(data.list||'the list').toLowerCase();
+      document.getElementById('lists-items').innerHTML=(data.items&&data.items.length)?data.items.map(i=>`<div class="l"><span style="color:var(--a1)">☐</span><span>${esc(i.text)}</span>${i.by_name?`<span style="color:#7c86a6;font-size:.6em">${esc(i.by_name)}</span>`:''}</div>`).join(''):'<div class="l">all clear</div>'; return; }
+    if(cue==='week'){ hue=[95,224,138]; intensity=.8; show('week');
+      const hm=m=>m>=60?Math.floor(m/60)+'h '+String(m%60).padStart(2,'0')+'m':m+'m';
+      document.getElementById('week-members').innerHTML=(data.members&&data.members.length)?data.members.map(m=>`<div class="l"><span style="font-size:1.4em">${esc((m.avatar&&m.avatar.emoji)||'🙂')}</span><span>${esc(m.name)}</span><span style="color:var(--ok)">${hm(m.mins)}</span></div>`).join(''):'<div class="l">nobody is sharing yet</div>';
+      document.getElementById('week-events').textContent=(data.events&&data.events.length)?data.events.map(e=>e.day.slice(5)+(e.at_time?' '+e.at_time:'')+' · '+e.title).join('   ·   '):'nothing on the calendar this week'; return; }
     if(cue==='money'){ hue=[95,224,138]; intensity=.8; const rows=data.rows||DEF_MONEY;
       document.getElementById('money-list').innerHTML=rows.map(r=>`<div class="l"><span class="was">${r[0]}</span><span class="arr">→</span><span>${r[1]}</span></div>`).join('');
       show('money'); const target=data.total||420; const t=document.getElementById('money-total'); let v=0; const step=()=>{v+=target/40;if(v>=target){t.textContent='R'+target+' /mo back';return;}t.textContent='R'+Math.round(v);requestAnimationFrame(step);}; step(); return; }

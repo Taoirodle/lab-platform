@@ -389,6 +389,28 @@ app.post('/api/showcase/cue', wrap(async (req, res) => {
   const cue = String((req.body && req.body.cue) || '').slice(0, 40);
   const data = (req.body && req.body.data) || {};
   if (!cue) return res.status(400).json({ error: 'cue required' });
+  // Live cues: the TV shows what the house actually knows, not a script.
+  try {
+    if (cue === 'sauce' && data.ask) {
+      const tz = calendar.DEFAULT_TZ, today = new Date().toLocaleDateString('en-CA', { timeZone: tz }), tomorrow = new Date(Date.now() + 7 * 86400000).toLocaleDateString('en-CA', { timeZone: tz });   // "tomorrow" is the window end: a week ahead
+      const [rooms, scenes, events, todos, ents] = await Promise.all([roomsView().catch(() => []), conductor.listScenes().catch(() => []), calendar.events({ from: today, to: tomorrow }).catch(() => []),
+        db.pool.query('SELECT text, list FROM shared_todos WHERE NOT done ORDER BY list, created_at DESC LIMIT 16').then(r => r.rows).catch(() => []), conductor.listEntities().catch(() => [])]);
+      const devices = ents.filter(e => e.kind === 'light' || e.kind === 'led-strip' || e.kind === 'switch').map(e => ({ name: e.name, room: e.room, on: !!(e.state && e.state.on) }));
+      const { reply, actions } = await sauce.ask({ name: 'the family', message: String(data.ask).slice(0, 300), history: [], house: { rooms, scenes, devices, events, todos, today, now: new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' }) } });
+      const did = []; for (const a of (actions || [])) { const r = await runSauceAction(a); if (r) did.push(r); }
+      data.question = String(data.ask).slice(0, 300); data.text = reply; data.did = did;
+    } else if (cue === 'lists') {
+      const lists = await db.pool.query(`SELECT list, count(*) FILTER (WHERE NOT done)::int AS open FROM shared_todos GROUP BY list ORDER BY (list='Groceries') DESC, open DESC`).then(r => r.rows);
+      const pick = (data.list && lists.find(l => l.list === data.list)) || lists[0];
+      data.list = pick ? pick.list : 'Family';
+      data.items = pick ? await db.pool.query('SELECT text, by_name FROM shared_todos WHERE list=$1 AND NOT done ORDER BY created_at DESC LIMIT 8', [pick.list]).then(r => r.rows) : [];
+    } else if (cue === 'week') {
+      data.members = await db.pool.query(`SELECT a.name, a.avatar, count(*)::int AS mins FROM accounts a JOIN devices d ON d.account_id=a.id JOIN usage_samples u ON u.device_id=d.id
+        WHERE (a.privacy->>'share_stats')='true' AND u.ts > now() - interval '7 days' AND NOT u.idle GROUP BY a.id, a.name, a.avatar ORDER BY mins DESC LIMIT 6`).then(r => r.rows).catch(() => []);
+      const ev = await calendar.events({ from: new Date().toLocaleDateString('en-CA', { timeZone: calendar.DEFAULT_TZ }), to: new Date(Date.now() + 7 * 86400000).toLocaleDateString('en-CA', { timeZone: calendar.DEFAULT_TZ }) }).catch(() => []);
+      data.events = ev.slice(0, 5).map(e => ({ day: e.day, title: e.title, at_time: e.at_time }));
+    }
+  } catch (e) { data.error = e.message; }
   broadcast({ type: 'showcase', cue, data });                 // push to every TV page on /ws
   try {                                                        // fire the matching real-world scene
     if (data.scene) await conductor.runScene(data.scene, 'showcase');
@@ -481,7 +503,7 @@ app.post('/api/sauce/ask', wrap(async (req, res) => {
   const t0 = Date.now();
   try {
     // give the brain the live state of the house — devices, today's calendar, the open list — so it answers from reality
-    const tz = calendar.DEFAULT_TZ, today = new Date().toLocaleDateString('en-CA', { timeZone: tz }), tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: tz });
+    const tz = calendar.DEFAULT_TZ, today = new Date().toLocaleDateString('en-CA', { timeZone: tz }), tomorrow = new Date(Date.now() + 7 * 86400000).toLocaleDateString('en-CA', { timeZone: tz });   // "tomorrow" is the window end: a week ahead
     const [rooms, scenes, events, todos, ents] = await Promise.all([
       roomsView().catch(() => []), conductor.listScenes().catch(() => []),
       calendar.events({ account_id: b.account_id ? Number(b.account_id) : null, from: today, to: tomorrow }).catch(() => []),

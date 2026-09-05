@@ -30,11 +30,18 @@ LAB.register({ id: 'sauce', label: 'The Sauce', icon: I.sauce, order: 4,
   render(el, ctx) {
     el.innerHTML = head('The Sauce', 'Your home AI — ask it anything, it lives on your server.');
     const card = LAB.el('div', 'card sauce'); card.innerHTML = `<div class="slog" id="slog"></div>
+      <div class="chips" id="schips"></div>
       <form class="sform" id="sform"><input id="sin" placeholder="Ask The Sauce…" autocomplete="off"><button class="btn pri" id="ssend">Send</button></form>`;
     el.appendChild(card);
-    const hist = [];
+    // the conversation survives page changes (last 12 turns, per install)
+    const hist = LAB.store.get('sauce_page_hist') || [];
     const add = (role, html, cls) => { const m = LAB.el('div', 'msg ' + role + (cls ? ' ' + cls : ''), html); card.querySelector('#slog').appendChild(m); card.querySelector('#slog').scrollTop = 1e9; return m; };
-    add('them', `Hey${ctx.me ? ' ' + LAB.esc(ctx.me.name) : ''} — what do you need?`);
+    if (hist.length) { for (const h of hist.slice(-8)) add(h.role === 'user' ? 'me' : 'them', LAB.esc(h.text).replace(/\n/g, '<br>')); }
+    else add('them', `Hey${ctx.me ? ' ' + LAB.esc(ctx.me.name) : ''} — what do you need?`);
+    const SUGG = ["What's on tonight?", 'What is left on the list?', 'Add milk to Groceries', 'Lights off in the lounge', 'Run movie night'];
+    card.querySelector('#schips').innerHTML = SUGG.map(s => `<button class="chip" type="button" data-q="${LAB.esc(s)}">${LAB.esc(s)}</button>`).join('') + (hist.length ? '<button class="chip" type="button" data-clear>Clear chat</button>' : '');
+    card.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { card.querySelector('#sin').value = b.dataset.q; card.querySelector('#sform').requestSubmit(); });
+    const clr = card.querySelector('[data-clear]'); if (clr) clr.onclick = () => { LAB.store.del('sauce_page_hist'); LAB.go('sauce'); };
     card.querySelector('#sform').onsubmit = async e => {
       e.preventDefault(); const t = card.querySelector('#sin').value.trim(); if (!t) return;
       card.querySelector('#sin').value = ''; add('me', LAB.esc(t)); hist.push({ role: 'user', text: t });
@@ -44,7 +51,7 @@ LAB.register({ id: 'sauce', label: 'The Sauce', icon: I.sauce, order: 4,
         think.remove();
         add('them', LAB.esc(r.reply).replace(/\n/g, '<br>'));
         if (r.did && r.did.length) add('them', '⚡ ' + r.did.map(LAB.esc).join(' &nbsp;·&nbsp; '), 'did');
-        hist.push({ role: 'assistant', text: r.reply });
+        hist.push({ role: 'assistant', text: r.reply }); LAB.store.set('sauce_page_hist', hist.slice(-12));
       }
       catch { think.remove(); add('them', 'My brain took too long — try again.', 'think'); }
       card.querySelector('#ssend').disabled = false;

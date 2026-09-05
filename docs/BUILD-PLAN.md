@@ -121,12 +121,21 @@
 - [x] Brute-force guard on login + PIN-confirmed edits: 10 wrong PINs per address per 15 min → 429 + Retry-After, `security: pin.lockout` audited. Verified: 10×401 then 429.
 - [x] `GET /api/health/full` (db, data-disk %, last backup age/size, uptime, live screens) + Admin "Health" pills (amber past 30 h without a backup).
 - [x] App "Getting started" card: five real checks (signed in, wizard profile, calendar linked, real device, measuring on), taps jump to the page, retires itself when done.
-- [ ] Rebuild 0.2.5 (stats delta + getting-started), publish, tag.
+- [x] 0.2.5 built, launch-verified, published, tagged; M-000025 deployed; smoke 28/28.
+
+### 18 · Wave nine
+- [x] Showcase: **live** cues — "Ask The Sauce · live" (the TV shows the question, the real answer and what it did), "The list" (Groceries/first list from the Hub), "This week" (members sharing + next 7 days). Verified over the cue channel.
+- [x] Root `README.md` for the public repo (map of the platform, what it does, how to run).
+- [x] Sauce page: suggestion chips, conversation persists across page changes (12 turns), clear chat.
+- [x] The Sauce's calendar window is now 7 days (was today+tomorrow) and it's told where its knowledge ends.
+- [ ] Rebuild 0.2.6 with the Sauce page polish; publish; tag. *(not done — run ended; the polish is in source, the released exe is 0.2.5)*
 
 ---
 
 ## Log
+- 2026-09-05 17:25 — **RUN CLOSED** (deadline 17:00). The 20:20 deploy+commit on Sept 4 was interrupted by Tao; the session then sat idle until this fire — no cron fires landed in between. On close: 7-day Sauce window deployed, wave 18 committed, smoke re-run. Released: app 0.2.5 (tags 0.2.0→0.2.5), manager M-000025. Open: CI blocked on the GitHub billing lock; 0.2.6 rebuild; Tailscale on the server (needs Tao's auth).
 - 2026-09-04 00:55 — Run started. Cron installed. Plan written. Repo public; CI re-fired on `app-v0.1.0`.
+- 2026-09-04 19:55 — **0.2.5 released** + M-000025 (PIN limiter verified 10×401→429, health/full, invites, getting-started). Waves 16–17 complete. Next: wave 18 (showcase cues, root README, Sauce page polish).
 - 2026-09-04 19:35 — **0.2.4 released** (lists, clock automations UI, toasts). Wave 16 done: kiosk lists, family invites (verified), vs-last-week, hub phone layout fixed, docs refreshed.
 - 2026-09-04 19:10 — **0.2.3 released** (tag at 731d279 = the built exe: home/away, offline cache, devices, palette, digest, live updates, live_device, CSV). Wave 15 first three items shipped + verified live (time automations fired on the minute; Sauce by device name; toasts). Tao was live on the kiosk/admin during the test (audit 18:18–18:23).
 - 2026-09-04 18:45 — Waves 13+14 shipped (M-000024): backups cron + restore, smoke.sh 28/28, kiosk/hub Sauce, retention control, live WS updates (verified with a real WS client), hub calendar linking, audit trail, CSV export, live_device page. 0.2.3 final build running (then tag). Audit log shows Tao using the new Admin desk at 16:15.
