@@ -272,3 +272,14 @@ html.fx-dense .phead h1{font-size:22px}
 .skin{border:1px solid var(--stroke);background:var(--panel);color:var(--txt);border-radius:10px;padding:8px 13px;cursor:pointer;font:inherit;font-size:12px;font-weight:600;position:relative;padding-left:26px}
 .skin::before{content:'';position:absolute;left:9px;top:50%;transform:translateY(-50%);width:11px;height:11px;border-radius:50%;background:var(--sw,linear-gradient(135deg,#b79bff,#6fb4ff))}
 .skin.on{outline:1px solid var(--a1)}
+/* your week — the one card that is about you */
+.weekhero{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}
+.wkbig{font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.wksplit{display:flex;gap:20px;font-size:13px;color:var(--txt2);padding-top:6px}
+.wksplit b{color:var(--txt);font-weight:700}
+.weekhero+.chart{margin-top:16px}
+.wkrow{display:grid;grid-template-columns:1.15fr .85fr;gap:22px;margin-top:18px}
+@media (max-width:820px){.wkrow{grid-template-columns:1fr;gap:14px}}
+.wkcol{min-width:0}
+.wkcol h4{font-family:var(--mono);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--txt2);font-weight:600;margin-bottom:10px}
+.wkcol .prow{padding:8px 0;font-size:13px}

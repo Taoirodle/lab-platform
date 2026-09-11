@@ -8,7 +8,7 @@
 // ============================================================
 LAB.widgets = {
   list: [],
-  DEFAULT: ['start', 'machine', 'usage', 'todos', 'today', 'house', 'sauce', 'foryou'],
+  DEFAULT: ['week', 'todos', 'today', 'machine', 'sauce', 'foryou', 'house', 'start'],
   register(w) { const i = this.list.findIndex(x => x.id === w.id); if (i >= 0) this.list[i] = w; else this.list.push(w); },
   get(id) { return this.list.find(w => w.id === id); },
   installed() { const s = LAB.store.get('widgets'); return Array.isArray(s) ? s : this.DEFAULT.slice(); },
@@ -133,6 +133,11 @@ LAB.widgets.register({ id: 'house', title: 'House', size: 'md',
   async render(el, ctx) {
     const paint = async () => {
       const [rooms, scenes] = await Promise.all([LAB.api('/api/kiosk/rooms').catch(() => []), LAB.api('/api/conductor/scenes').catch(() => [])]);
+      // Honesty: five virtual rooms are a demo, not a house. Say so instead of faking switches.
+      if (rooms.length && !rooms.some(r => r.driver !== 'virtual')) {
+        el.innerHTML = '<div class="muted">No real devices yet — these rooms are demo switches. Add a WLED strip, a WiZ bulb or a sensor and this becomes your actual house.</div>';
+        link(el, 'Add a device', 'automations'); return;
+      }
       el.innerHTML = `<div class="wrooms">${rooms.map(r => `<button class="rtile ${r.on ? 'on' : ''}" data-room="${LAB.esc(r.id)}"><span>${r.on ? 'on' : 'off'}${r.online === false ? ' · offline' : ''}</span>${LAB.esc(r.name)}</button>`).join('') || '<div class="muted">No rooms yet — add devices from the web Hub.</div>'}</div>`
         + (scenes.length ? `<div class="wscenes">${scenes.map(s => `<button class="btn" data-scene="${LAB.esc(s.id)}">${LAB.esc(s.name)}</button>`).join('')}</div>` : '');
       el.querySelectorAll('[data-room]').forEach(b => b.onclick = async () => { b.disabled = true; await post('/api/kiosk/rooms/' + encodeURIComponent(b.dataset.room) + '/toggle').catch(() => {}); paint(); });
