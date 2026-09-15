@@ -255,6 +255,13 @@
       <div class="card" id="audit"><div class="empty">Loading…</div></div>
     </div>
   </div>
+
+  <div class="lbl">The House <span class="hint">the household's single source of truth · never leaves the home network</span></div>
+  <div class="card" id="house">
+    <div class="tiles" id="h-sum"></div>
+    <div class="btns" id="h-tabs" style="margin:16px 0 4px"></div>
+    <div id="h-body"><div class="empty">Loading…</div></div>
+  </div>
 </main>
 
 <script src="/labloader.js"></script>
@@ -466,8 +473,79 @@
     const rows = await api('/api/audit?limit=40').catch(()=>[]);
     $('audit').innerHTML = rows.length ? rows.map(r=>`<div class="dev" style="align-items:flex-start"><div><b>${esc(r.action)}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(r.actor||'system')}</span>${r.detail?`<div style="font-size:12px;color:var(--ink2);word-break:break-word">${esc(JSON.stringify(r.detail)).slice(0,160)}</div>`:''}</div><span style="font-size:11px;color:var(--ink3);white-space:nowrap">${new Date(r.ts).toLocaleString()}</span></div>`).join('') : '<div class="empty">Nothing recorded yet.</div>';
   }
+  /* ---------- The House Registry ---------- */
+  // Columns shown per domain, and the fields the add-row asks for. Adding a
+  // domain server-side means adding one line here, nothing else.
+  const H_COLS = {
+    assets:    ['name','kind','ip','room','status'],
+    bills:     ['label','category','amount','cadence','due_day'],
+    debts:     ['label','kind','balance','rate_pct','min_payment'],
+    contacts:  ['name','role','phone'],
+    providers: ['name','kind','phone'],
+    facts:     ['category','label','value']
+  };
+  const H_ADD = {
+    assets:    [['name','Name'],['kind','Kind'],['room','Room'],['make','Make'],['model','Model'],['serial','Serial']],
+    bills:     [['label','What'],['category','Category'],['amount','Amount'],['cadence','monthly/annual'],['due_day','Day']],
+    debts:     [['label','What'],['balance','Balance'],['min_payment','Min/month'],['rate_pct','Rate %']],
+    contacts:  [['name','Name'],['role','Plumber, doctor…'],['phone','Phone']],
+    providers: [['name','Name'],['kind','isp/bank/insurer…'],['phone','Phone']],
+    facts:     [['category','Category'],['label','What'],['value','Value']]
+  };
+  const H_MONEY = { amount:1, balance:1, min_payment:1 };
+  let hTab = 'assets', hBusy = false;
+  const money = v => v==null||v===''?'—':'R'+Number(v).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  async function loadHouse(){
+    const [sum, rows] = await Promise.all([
+      api('/api/house/summary').catch(()=>null),
+      api('/api/house/'+hTab).catch(()=>[])
+    ]);
+    if (sum) {
+      const m = sum.money, c = sum.counts;
+      $('h-sum').innerHTML =
+        tile('Per month', money(m.per_month), c.bills+' bills') +
+        tile('Subscriptions', money(m.subscriptions_per_month), c.subscriptions+' of them') +
+        tile('Debt', money(m.debt_total), money(m.debt_min_per_month)+'/mo minimum') +
+        tile('Kit', String(c.assets), c.unconfirmed+' still unnamed') +
+        tile('Contacts', String(c.contacts), c.providers+' providers');
+    }
+    $('h-tabs').innerHTML = Object.keys(H_COLS).map(k=>
+      `<button class="btn ${k===hTab?'':'ghost'}" data-htab="${k}">${k[0].toUpperCase()+k.slice(1)}</button>`).join('')
+      + (hTab==='assets' ? `<button class="btn ghost" id="h-scan" ${hBusy?'disabled':''} style="margin-left:14px">${hBusy?'Scanning…':'Scan the network'}</button>` : '');
+    $('h-tabs').querySelectorAll('[data-htab]').forEach(b=>b.onclick=()=>{ hTab=b.dataset.htab; loadHouse(); });
+    const scan = $('h-scan');
+    if (scan) scan.onclick = async ()=>{ hBusy=true; loadHouse(); try{ await fetch('/api/house/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({by:'admin'})}); }catch{} hBusy=false; loadHouse(); };
+
+    const cols = H_COLS[hTab];
+    const head = `<div class="dev" style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink3)"><div style="display:flex;gap:14px;flex:1">${cols.map(c=>`<span style="flex:1">${c.replace(/_/g,' ')}</span>`).join('')}</div><span style="width:60px"></span></div>`;
+    const body = rows.length ? rows.map(r=>`<div class="dev"><div style="display:flex;gap:14px;flex:1;min-width:0">${
+      cols.map(c=>`<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">${
+        H_MONEY[c] ? money(r[c]) : esc(r[c]==null||r[c]===''?'—':String(r[c]))
+      }${c==='name'&&r.confirmed===false?' <em style="color:var(--ink3);font-style:normal;font-size:11px">unconfirmed</em>':''}</span>`).join('')
+    }</div><span style="width:60px;text-align:right"><span data-hdel="${r.id}" style="cursor:pointer;color:var(--ink3);font-size:11px;text-transform:uppercase;letter-spacing:1px">Remove</span></span></div>`).join('')
+      : '<div class="empty">Nothing here yet.</div>';
+    const add = `<form id="h-add" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:center">${
+      H_ADD[hTab].map(([k,ph])=>`<input name="${k}" placeholder="${ph}" style="flex:1;min-width:110px;font:inherit;padding:8px 10px;border:1px solid var(--line2);border-radius:2px">`).join('')
+    }<button class="btn">Add</button></form><div class="empty" id="h-msg" style="padding-top:6px"></div>`;
+    $('h-body').innerHTML = head + body + add;
+    $('h-body').querySelectorAll('[data-hdel]').forEach(b=>b.onclick=async()=>{
+      await fetch('/api/house/'+hTab+'/'+b.dataset.hdel,{method:'DELETE'}); loadHouse();
+    });
+    $('h-add').onsubmit = async e => {
+      e.preventDefault();
+      const d = { added_by:'admin' };
+      new FormData(e.target).forEach((v,k)=>{ if(String(v).trim()) d[k]=String(v).trim(); });
+      const r = await fetch('/api/house/'+hTab,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(r=>r.json()).catch(()=>({error:'failed'}));
+      if (r.error) { $('h-msg').textContent = r.error; return; }
+      loadHouse();
+    };
+  }
+  const tile = (k,v,sub)=>`<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="u">${esc(sub||'')}</div></div>`;
+
   function startPortal(){
     boot = LabLoader.overlay({ label: 'L.A.B Admin' });
+    loadHouse(); setInterval(loadHouse, 120000);
     connect();
     initNeural();
     loadHubDevices();
