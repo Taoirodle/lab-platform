@@ -283,3 +283,6 @@ html.fx-dense .phead h1{font-size:22px}
 .wkcol{min-width:0}
 .wkcol h4{font-family:var(--mono);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--txt2);font-weight:600;margin-bottom:10px}
 .wkcol .prow{padding:8px 0;font-size:13px}
+/* live-bound generated cards */
+.livelist{margin-top:10px;font-size:13px;line-height:1.7;color:var(--txt2)}
+.livelist div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

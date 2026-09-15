@@ -71,14 +71,32 @@ Rules: dark background, clearly legible light text, two accent colours that harm
 }
 
 // ---- WIDGETS (structured, rendered by trusted Hub templates) ---------------
-const WIDGET_TEMPLATES = ['tips', 'checklist', 'focus'];
+const WIDGET_TEMPLATES = ['tips', 'checklist', 'focus', 'live'];
+// The whitelist a 'live' widget may bind to. Must match the LIVE map in
+// server.js — the server validates again, so a stale entry here fails closed.
+const WIDGET_SOURCES = ['todos_open', 'events_next', 'kit_unconfirmed', 'kit_summary', 'rooms_on', 'usage_today', 'usage_week', 'house_facts'];
 function validateWidget(w) {
-  return w && WIDGET_TEMPLATES.includes(w.template) && w.title && Array.isArray(w.items) && w.items.length >= 1 && w.items.length <= 8;
+  if (!w || !WIDGET_TEMPLATES.includes(w.template) || !w.title) return false;
+  // A live card carries no prose of its own: it names real data and frames it.
+  if (w.template === 'live') return WIDGET_SOURCES.includes(w.source);
+  return Array.isArray(w.items) && w.items.length >= 1 && w.items.length <= 8;
 }
 async function generateWidget({ brief = '', agent = 'Nova' } = {}) {
   const clientTop = await ledgers.read('client', { kind: 'signal', limit: 8 }).then(r => r.map(x => x.key).join(', ')).catch(() => '');
   const prompt =
-`You are ${agent} on the L.A.B build team. Design a small, genuinely useful dashboard WIDGET for the family Hub. Pick ONE template that fits:
+`You are ${agent} on the L.A.B build team. Design a small dashboard WIDGET for the family Hub.
+
+STRONGLY PREFER "live". A card that recites prose is worthless; a card bound to
+real household data earns its place on the screen. Only fall back to a static
+template when no live source could possibly answer the need.
+
+- "live": binds to one real data source and frames it. Choose a source:
+${WIDGET_SOURCES.map(s => '    ' + s).join('\n')}
+  todos_open = open items across the lists · events_next = the next 7 days
+  kit_unconfirmed = devices found on the network still needing a name
+  kit_summary = what the house owns · rooms_on = lights currently on
+  usage_today / usage_week = measured time at this machine
+  house_facts = what the house has recorded about itself
 - "tips": a rotating list of short helpful tips.
 - "checklist": a short actionable checklist.
 - "focus": one headline focus + up to 3 supporting lines.
@@ -86,7 +104,9 @@ async function generateWidget({ brief = '', agent = 'Nova' } = {}) {
 What the family actually uses lately: ${clientTop || '(not much yet)'}
 ${brief ? 'Brief: ' + brief : ''}
 
-Return ONLY JSON: {"template":"tips|checklist|focus","name":"kebab-slug","title":"Card Title","summary":"one line","accent":"#hex","items":["short line","short line", "..."]}. Keep items short and real, 3-6 of them.`;
+For live: {"template":"live","source":"<one of the above>","name":"kebab-slug","title":"Card Title","summary":"one line on why it matters","accent":"#hex"}
+For the others: {"template":"tips|checklist|focus","name":"kebab-slug","title":"Card Title","summary":"one line","accent":"#hex","items":["short line", "..."]} with 3-6 short, real items.
+Return ONLY the JSON.`;
   const w = parseJSON(await askClaude(prompt));
   const tested = validateWidget(w);
   const id = uid();
@@ -94,7 +114,7 @@ Return ONLY JSON: {"template":"tips|checklist|focus","name":"kebab-slug","title"
     `INSERT INTO generations(id,kind,name,title,summary,payload,status,tested,agent)
      VALUES($1,'widget',$2,$3,$4,$5,$6,$7,$8)`,
     [id, String(w.name || 'widget-' + id).slice(0, 40), String(w.title || 'New Widget').slice(0, 60),
-     String(w.summary || '').slice(0, 160), JSON.stringify({ template: w.template, accent: w.accent, items: (w.items || []).map(s => String(s).slice(0, 120)) }),
+     String(w.summary || '').slice(0, 160), JSON.stringify({ template: w.template, source: w.source, accent: w.accent, items: (w.items || []).map(s => String(s).slice(0, 120)) }),
      tested ? 'published' : 'staged', tested, agent]);
   return { id, kind: 'widget', name: w.name, title: w.title, tested, status: tested ? 'published' : 'staged' };
 }

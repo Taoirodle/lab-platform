@@ -608,6 +608,78 @@ app.post('/api/admin/invite', wrap(async (req, res) => {
   db.audit('admin', 'account.invite', { id: a.id, name });
   res.json({ id: a.id, name: a.name, pin });
 }));
+// ---- Live sources: the whitelist a generated widget may bind to -----------
+// A widget names a source; the server resolves it. The AI chooses WHAT to show
+// and how to frame it, and cannot invent the numbers. Family-safe by design —
+// nothing here exposes money, serials or identifiers, so it is not SENSITIVE.
+const LIVE = {
+  async todos_open() {
+    const rows = await db.pool.query('SELECT list, text FROM shared_todos WHERE NOT done ORDER BY created_at DESC LIMIT 40').then(r => r.rows);
+    const per = {}; rows.forEach(r => { per[r.list] = (per[r.list] || 0) + 1; });
+    return { value: String(rows.length), label: rows.length === 1 ? 'thing open' : 'things open',
+      sub: Object.entries(per).map(([l, n]) => `${l} ${n}`).join(' · ') || 'all clear',
+      items: rows.slice(0, 6).map(r => r.text) };
+  },
+  async events_next() {
+    const tz = calendar.DEFAULT_TZ;
+    const from = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const to = new Date(Date.now() + 7 * 86400000).toLocaleDateString('en-CA', { timeZone: tz });
+    const ev = await calendar.events({ from, to }).catch(() => []);
+    return { value: String(ev.length), label: 'in the next 7 days',
+      sub: ev[0] ? `next: ${ev[0].title}${ev[0].at_time ? ' at ' + ev[0].at_time : ''}` : 'nothing on',
+      items: ev.slice(0, 6).map(e => `${e.day.slice(5)}${e.at_time ? ' ' + e.at_time : ''} · ${e.title}`) };
+  },
+  async kit_unconfirmed() {
+    const rows = await house.list('assets');
+    const un = rows.filter(a => !a.confirmed);
+    return { value: String(un.length), label: 'devices still unnamed', sub: `${rows.length} on the register`,
+      items: un.slice(0, 6).map(a => `${a.name}${a.ip ? ' · ' + a.ip : ''}`) };
+  },
+  async kit_summary() {
+    const rows = await house.list('assets');
+    const per = {}; rows.forEach(a => { per[a.kind] = (per[a.kind] || 0) + 1; });
+    return { value: String(rows.length), label: 'things on the register',
+      sub: Object.entries(per).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => `${n} ${k}`).join(' · '),
+      items: Object.entries(per).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}: ${n}`) };
+  },
+  async rooms_on() {
+    const rooms = await roomsView().catch(() => []);
+    const on = rooms.filter(r => r.on);
+    return { value: String(on.length), label: on.length === 1 ? 'light on' : 'lights on', sub: `${rooms.length} rooms`,
+      items: on.map(r => r.name) };
+  },
+  async usage_today(q) {
+    if (!q.device_id) return { value: '—', label: 'not measured here', sub: 'open this in the app', items: [] };
+    const s = await db.usage.summary({ device_id: String(q.device_id).slice(0, 80), days: 1, tz: q.tz });
+    const d = (s.days && s.days[0]) || { total: 0, cats: {} };
+    const h = Math.floor(d.total / 60);
+    return { value: h ? `${h}h ${String(d.total % 60).padStart(2, '0')}m` : `${d.total}m`, label: 'at this machine today',
+      sub: Object.entries(d.cats).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} ${Math.round(v)}m`).join(' · ') || 'nothing yet',
+      items: (s.top_apps || []).slice(0, 5).map(a => `${a.app} · ${Math.round(a.mins)}m`) };
+  },
+  async usage_week(q) {
+    if (!q.device_id) return { value: '—', label: 'not measured here', sub: 'open this in the app', items: [] };
+    const s = await db.usage.summary({ device_id: String(q.device_id).slice(0, 80), days: 7, tz: q.tz });
+    const tot = (s.days || []).reduce((a, d) => a + d.total, 0), h = Math.floor(tot / 60);
+    return { value: h ? `${h}h ${String(tot % 60).padStart(2, '0')}m` : `${tot}m`, label: 'this week',
+      sub: (s.top_apps || [])[0] ? 'mostly ' + s.top_apps[0].app : 'nothing measured',
+      items: (s.top_apps || []).slice(0, 5).map(a => `${a.app} · ${Math.round(a.mins / 60)}h`) };
+  },
+  async house_facts() {
+    const rows = await house.list('facts');
+    return { value: String(rows.length), label: 'things the house knows about itself',
+      sub: rows[0] ? rows[0].label : 'nothing recorded yet',
+      items: rows.slice(0, 6).map(f => `${f.label}: ${f.value || '—'}`) };
+  }
+};
+app.get('/api/live/sources', (req, res) => res.json(Object.keys(LIVE)));
+app.get('/api/live/:source', wrap(async (req, res) => {
+  const fn = LIVE[req.params.source];
+  if (!fn) return res.status(404).json({ error: 'unknown live source' });
+  try { res.json({ source: req.params.source, ...(await fn(req.query || {})) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+}));
+
 // ---- The House Registry: the household's single source of truth ----------
 // Admin-gated and LAN-only. The most sensitive data in the house lives here.
 app.get('/api/house/summary', wrap(async (req, res) => res.json(await house.summary())));

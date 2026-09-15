@@ -24,6 +24,19 @@ LAB.widgets = {
     const accent = /^#[0-9a-f]{3,8}$/i.test(p.accent || '') ? p.accent : '';
     return { id, title: p.title || g.title || g.name || 'Widget', size: 'sm', generated: true, accent, summary: p.summary || g.summary || '',
       render(el) {
+        // A live card holds no prose of its own: the builder chose which real
+        // data to show, the server resolves it, and the numbers are always true.
+        if (p.template === 'live') {
+          el.innerHTML = '<div class="muted">…</div>';
+          const q = new URLSearchParams({ tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
+          if (LAB.telemetry && LAB.isNative()) q.set('device_id', LAB.telemetry.deviceId());
+          LAB.api('/api/live/' + encodeURIComponent(p.source) + '?' + q).then(d => {
+            el.innerHTML = `<div class="big"${accent ? ` style="color:${accent}"` : ''}>${LAB.esc(d.value)}</div>`
+              + `<div class="muted">${LAB.esc(d.label || '')}${d.sub ? ' · ' + LAB.esc(d.sub) : ''}</div>`
+              + ((d.items || []).length ? `<div class="livelist">${d.items.slice(0, 5).map(i => `<div>${LAB.esc(i)}</div>`).join('')}</div>` : '');
+          }).catch(() => { el.innerHTML = '<div class="muted">Could not read that right now.</div>'; });
+          return;
+        }
         if (p.template === 'checklist') {
           const done = new Set(LAB.store.get('wcheck_' + g.id) || []);
           el.innerHTML = items.map((t, i) => `<label class="wcheck"><input type="checkbox" data-i="${i}" ${done.has(i) ? 'checked' : ''}><span>${LAB.esc(t)}</span></label>`).join('');
