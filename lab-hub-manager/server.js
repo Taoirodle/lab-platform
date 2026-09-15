@@ -22,6 +22,7 @@ const conductor = require('./conductor');
 const wizard = require('./wizard');
 const calendar = require('./calendar');
 const house = require('./house');
+const presence = require('./presence');
 
 const VERSION = 'M-000026';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
@@ -665,6 +666,17 @@ const LIVE = {
       sub: (s.top_apps || [])[0] ? 'mostly ' + s.top_apps[0].app : 'nothing measured',
       items: (s.top_apps || []).slice(0, 5).map(a => `${a.app} · ${Math.round(a.mins / 60)}h`) };
   },
+  async who_home() {
+    const p = presence.current();
+    const people = (p.people || []).filter(x => x.home);
+    const devs = (p.devices || []).filter(d => d.home);
+    if (p.people && p.people.length) {
+      return { value: String(people.length), label: people.length === 1 ? 'person home' : 'people home',
+        sub: people.map(x => x.name).join(', ') || 'nobody', items: (p.people || []).map(x => `${x.name}: ${x.home ? 'home' : 'out'}`) };
+    }
+    return { value: String(devs.length), label: 'devices in the house',
+      sub: p.note || 'nobody has claimed a device yet', items: devs.slice(0, 6).map(d => d.name) };
+  },
   async house_facts() {
     const rows = await house.list('facts');
     return { value: String(rows.length), label: 'things the house knows about itself',
@@ -672,6 +684,10 @@ const LIVE = {
       items: rows.slice(0, 6).map(f => `${f.label}: ${f.value || '—'}`) };
   }
 };
+// ---- Presence: who is home, from the network alone -----------------------
+app.get('/api/presence', wrap(async (req, res) => res.json(presence.current())));
+app.post('/api/presence/sweep', wrap(async (req, res) => res.json(await presence.sweep())));
+
 app.get('/api/live/sources', (req, res) => res.json(Object.keys(LIVE)));
 app.get('/api/live/:source', wrap(async (req, res) => {
   const fn = LIVE[req.params.source];
@@ -973,6 +989,16 @@ collectStats();
       startLedgerSchedulers();
       calendar.start();
       conductor.startClock();
+      presence.start(async ({ device, home }) => {
+        const p = presence.current();
+        const anyoneHome = (p.devices || []).some(d => d.home);
+        const who = device.owner || null;
+        // first person in, or last person out — the two that matter most
+        const first_or_last = home && (p.devices || []).filter(d => d.home).length === 1 ? 'first'
+          : (!home && !anyoneHome ? 'last' : null);
+        try { broadcast({ type: 'presence', who, device: device.name, home, first_or_last }); } catch {}
+        conductor.runAutomations({ type: 'presence', who, home, first_or_last }).catch(() => {});
+      });
       return;
     }
     catch (e) { if (i === 0) console.log('waiting for SQL Brain…', e.code || e.message); await new Promise(r => setTimeout(r, 3000)); }

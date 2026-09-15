@@ -219,6 +219,12 @@ async function runAutomations(ev) {
   for (const a of autos) {
     const t = a.trigger || {};
     if (t.type && t.type !== ev.type) continue;
+    if (t.type === 'presence') {
+      // {type:'presence', who?: 'Tao', home?: true}  — arrival and departure rules
+      if (typeof t.home === 'boolean' && t.home !== ev.home) continue;
+      if (t.who && String(t.who).toLowerCase() !== String(ev.who || '').toLowerCase()) continue;
+      if (t.first_or_last && ev.first_or_last !== t.first_or_last) continue;
+    }
     if (t.type === 'time') {
       if (t.at !== ev.at) continue;
       if (Array.isArray(t.days) && t.days.length && !t.days.includes(ev.dow)) continue;
