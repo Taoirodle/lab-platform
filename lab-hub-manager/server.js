@@ -21,8 +21,9 @@ const research = require('./research');
 const conductor = require('./conductor');
 const wizard = require('./wizard');
 const calendar = require('./calendar');
+const house = require('./house');
 
-const VERSION = 'M-000025';
+const VERSION = 'M-000026';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
@@ -39,7 +40,7 @@ app.use(express.json());
 const viaTunnel = req => !!(req.headers['cf-connecting-ip'] || req.headers['cf-ray'] || req.headers['x-forwarded-host']);
 const SENSITIVE = [
   /^\/$/, /^\/admin(\/|$)/, /^\/install(\/|$)/, /^\/showcase(\/|$)/,
-  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/devices|app\/sync|audit)/
+  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/devices|app\/sync|audit|house)/
 ];
 app.use(async (req, res, next) => {
   if (!viaTunnel(req)) return next();                         // on the home network → trusted
@@ -594,6 +595,24 @@ app.post('/api/admin/invite', wrap(async (req, res) => {
   db.audit('admin', 'account.invite', { id: a.id, name });
   res.json({ id: a.id, name: a.name, pin });
 }));
+// ---- The House Registry: the household's single source of truth ----------
+// Admin-gated and LAN-only. The most sensitive data in the house lives here.
+app.get('/api/house/summary', wrap(async (req, res) => res.json(await house.summary())));
+app.post('/api/house/discover', wrap(async (req, res) => res.json(await house.discover({ added_by: (req.body && req.body.by) || 'admin' }))));
+app.get('/api/house/:domain', wrap(async (req, res) => {
+  try { res.json(await house.list(req.params.domain)); } catch (e) { res.status(404).json({ error: e.message }); }
+}));
+app.post('/api/house/:domain', wrap(async (req, res) => {
+  try { res.json(await house.create(req.params.domain, req.body || {})); } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+app.patch('/api/house/:domain/:id', wrap(async (req, res) => {
+  try { const r = await house.update(req.params.domain, req.params.id, req.body || {}); if (!r) return res.status(404).json({ error: 'not found' }); res.json(r); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+}));
+app.delete('/api/house/:domain/:id', wrap(async (req, res) => {
+  try { res.json(await house.remove(req.params.domain, req.params.id)); } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+
 // the audit trail: who/what did what on the platform (home-network only)
 app.get('/api/audit', wrap(async (req, res) => {
   const n = Math.max(1, Math.min(200, Number(req.query.limit) || 40));

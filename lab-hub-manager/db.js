@@ -252,6 +252,78 @@ CREATE TABLE IF NOT EXISTS calendar_events (
 );
 CREATE INDEX IF NOT EXISTS calendar_events_day_idx ON calendar_events (day);
 CREATE INDEX IF NOT EXISTS calendar_events_feed_idx ON calendar_events (feed_id);
+
+-- ===================================================================
+--  THE HOUSE REGISTRY — the household's single source of truth.
+--  What the house owns, pays, and who to call. LAN-only, admin-gated,
+--  never in git. Every row carries provenance: who said it, or what saw it.
+-- ===================================================================
+CREATE TABLE IF NOT EXISTS house_providers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'other',
+  account_ref TEXT, phone TEXT, email TEXT, url TEXT, notes TEXT,
+  added_by TEXT, source TEXT DEFAULT 'stated',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS house_bills (
+  id TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  provider_id TEXT REFERENCES house_providers(id) ON DELETE SET NULL,
+  category TEXT NOT NULL DEFAULT 'other',
+  amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'ZAR',
+  cadence TEXT NOT NULL DEFAULT 'monthly',
+  due_day SMALLINT,
+  whole_house BOOLEAN NOT NULL DEFAULT true,
+  account_id BIGINT,
+  active BOOLEAN NOT NULL DEFAULT true,
+  started_on DATE, ends_on DATE,
+  notes TEXT, added_by TEXT, source TEXT DEFAULT 'stated',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS house_debts (
+  id TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  provider_id TEXT REFERENCES house_providers(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL DEFAULT 'loan',
+  balance NUMERIC(14,2) NOT NULL DEFAULT 0,
+  original NUMERIC(14,2), rate_pct NUMERIC(6,3), min_payment NUMERIC(12,2),
+  currency TEXT NOT NULL DEFAULT 'ZAR',
+  due_day SMALLINT, ends_on DATE, account_id BIGINT,
+  notes TEXT, added_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS house_assets (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'other',
+  make TEXT, model TEXT, serial TEXT,
+  mac TEXT, ip TEXT, hostname TEXT,
+  room TEXT, owner_account_id BIGINT,
+  purchased_on DATE, price NUMERIC(12,2), warranty_until DATE,
+  status TEXT NOT NULL DEFAULT 'active',
+  confirmed BOOLEAN NOT NULL DEFAULT false,
+  notes TEXT, added_by TEXT, source TEXT DEFAULT 'stated',
+  last_seen TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS house_assets_mac_idx ON house_assets (lower(mac)) WHERE mac IS NOT NULL;
+CREATE TABLE IF NOT EXISTS house_contacts (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL, role TEXT, phone TEXT, email TEXT,
+  provider_id TEXT REFERENCES house_providers(id) ON DELETE SET NULL,
+  last_used_on DATE, notes TEXT, added_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS house_facts (
+  id TEXT PRIMARY KEY,
+  category TEXT NOT NULL DEFAULT 'general',
+  label TEXT NOT NULL, value TEXT,
+  confidence TEXT NOT NULL DEFAULT 'stated',
+  added_by TEXT, source TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 INSERT INTO settings(key,value) VALUES ('ai', '{"activity":5,"aggressiveness":5,"buildingPaused":false}')
   ON CONFLICT (key) DO NOTHING;
 `;
