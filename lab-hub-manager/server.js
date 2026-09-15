@@ -511,9 +511,22 @@ app.post('/api/sauce/ask', wrap(async (req, res) => {
       db.pool.query('SELECT text, list FROM shared_todos WHERE NOT done ORDER BY list, created_at DESC LIMIT 16').then(r => r.rows).catch(() => []),
       conductor.listEntities().catch(() => [])
     ]);
+    // The registry is admin-gated data reachable from a family-facing assistant,
+    // so the money half is only assembled for an admin. Everyone gets the kit,
+    // the contacts and the house facts; nobody gets serials or account numbers.
+    let isAdmin = false;
+    try {
+      const tk = req.headers['x-lab-token'], kk = req.headers['x-lab-key'];
+      if (tk && kk) isAdmin = await db.admins.verifyKey(String(tk), String(kk));
+      if (!isAdmin && b.account_id) {
+        const acct = await db.accounts.get(Number(b.account_id));
+        isAdmin = !!acct && ['admin', 'owner'].includes(String(acct.role || '').toLowerCase());
+      }
+    } catch {}
+    const registry = await house.context({ money: isAdmin }).catch(() => null);
     const devices = ents.filter(e => e.kind === 'light' || e.kind === 'led-strip' || e.kind === 'switch').map(e => ({ name: e.name, room: e.room, on: !!(e.state && e.state.on) }));
     const now = new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
-    const { reply, actions } = await sauce.ask({ name: b.name, message, history: Array.isArray(b.history) ? b.history : [], house: { rooms, scenes, devices, events, todos, today, now } });
+    const { reply, actions } = await sauce.ask({ name: b.name, message, history: Array.isArray(b.history) ? b.history : [], house: { rooms, scenes, devices, events, todos, today, now, registry } });
     const did = [];
     for (const a of (actions || [])) { const r = await runSauceAction(a); if (r) did.push(r); }
     db.events.add({ account_id: b.account_id || null, type: 'sauce', payload: { ms: Date.now() - t0, q: message.slice(0, 120), acted: did.length } }).catch(() => {});

@@ -34,6 +34,23 @@ function parseJSON(text) {
 const PERSONA =
 `You are "The Sauce", the AI that runs the Volkwyn family's home platform (L.A.B) from their own private server. Warm, upbeat, concise (1-3 sentences), lightly witty — never corny.`;
 
+// The house registry, rendered for the prompt. This is the difference between
+// an assistant that guesses about the house and one that knows it.
+function houseKnowledge(r) {
+  if (!r) return '';
+  const lines = [];
+  if (r.kit && r.kit.length) lines.push(`What the house owns (${r.kit_count} things on the register):\n  ` + r.kit.join('\n  '));
+  if (r.providers && r.providers.length) lines.push('Who we are with: ' + r.providers.join('; '));
+  if (r.contacts && r.contacts.length) lines.push('Who to call: ' + r.contacts.join('; '));
+  if (r.facts && r.facts.length) lines.push('Things about this house: ' + r.facts.join('; '));
+  if (r.money) {
+    const m = r.money;
+    lines.push(`Money (ADMIN ONLY — never repeat these figures unless the person asking is Tao or his dad): R${m.per_month}/month in bills (R${m.per_year}/year), R${m.subscriptions_per_month}/month of that is subscriptions, R${m.debt_total} of debt with R${m.debt_min_per_month}/month in minimums.`
+      + (m.biggest.length ? ' Biggest: ' + m.biggest.join(', ') + '.' : ''));
+  }
+  return lines.length ? lines.join('\n') + '\n' : '';
+}
+
 function toolDoc(house) {
   const ev = (house.events || []).slice(0, 14).map(e => `${e.day}${e.at_time ? ' ' + e.at_time : ''} ${e.title}${e.source === 'family' ? '' : ' (' + (e.feed || 'linked') + ')'}`).join('; ');
   const todos = (house.todos || []).slice(0, 16).map(t => (t.list && t.list !== 'Family' ? '[' + t.list + '] ' : '') + t.text).join('; ');
@@ -41,6 +58,7 @@ function toolDoc(house) {
 Available scenes: ${(house.scenes || []).map(s => s.name).join(', ') || '(none)'}
 Rooms: ${(house.rooms || []).map(r => `${r.id} (${r.on ? 'on' : 'off'})`).join(', ') || '(none)'}
 Devices by name: ${(house.devices || []).map(d => `${d.name} [${d.room}, ${d.on ? 'on' : 'off'}]`).join('; ') || '(none)'}
+${houseKnowledge(house.registry)}
 Calendar (today + the next 7 days, real — beyond that you don't know): ${ev || '(nothing on in the next 7 days)'}
 Open family to-dos (real): ${todos || '(list is clear)'}
 

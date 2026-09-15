@@ -219,4 +219,47 @@ async function discover({ added_by = 'admin' } = {}) {
 }
 const ports_note = f => `Found by the network scan${f.ports.length ? ' · open ports ' + f.ports.join(', ') : ''}${f.vendor === 'private address' ? ' · randomised MAC, so this is probably a phone' : ''}`;
 
-module.exports = { TABLES: Object.keys(TABLES), list, create, update, remove, summary, discover };
+// ---- what the AI is allowed to know ---------------------------------------
+// The registry holds the most sensitive data in the house, and The Sauce is
+// answerable from the kiosk where anyone can reach it. So this is a deliberate
+// narrowing, not a dump: labels and aggregates, never identifiers.
+//   · serials, MACs and account references never leave this file
+//   · anything that looks like a secret is dropped by name
+//   · money is included only when the asker is an admin (Tao or Dad)
+const SECRETish = /\b(code|password|passcode|pin|key|combination|secret|account\s*no|acc\s*no)\b/i;
+
+async function context({ money = false } = {}) {
+  const [assets, contacts, providers, facts, bills, debts] = await Promise.all([
+    list('assets'), list('contacts'), list('providers'), list('facts'),
+    money ? list('bills') : Promise.resolve([]),
+    money ? list('debts') : Promise.resolve([])
+  ]);
+
+  const byKind = {};
+  for (const a of assets) (byKind[a.kind] = byKind[a.kind] || []).push(a);
+  const kit = Object.entries(byKind).map(([kind, rows]) =>
+    `${kind}: ` + rows.map(a => a.name + (a.room ? ' in the ' + a.room : '') + (a.confirmed ? '' : ' (unconfirmed guess)')).join(', ')
+  );
+
+  const out = {
+    kit,
+    kit_count: assets.length,
+    contacts: contacts.map(c => [c.name, c.role, c.phone].filter(Boolean).join(' — ')),
+    providers: providers.map(p => `${p.name} (${p.kind})`),
+    facts: facts.filter(f => !SECRETish.test(f.label || '')).map(f => `${f.label}: ${f.value || 'unknown'}`)
+  };
+
+  if (money) {
+    const s = await summary();
+    out.money = {
+      per_month: s.money.per_month, per_year: s.money.per_year,
+      subscriptions_per_month: s.money.subscriptions_per_month,
+      debt_total: s.money.debt_total, debt_min_per_month: s.money.debt_min_per_month,
+      biggest: bills.filter(b => b.active).sort((a, b) => Number(b.amount) - Number(a.amount)).slice(0, 6).map(b => `${b.label} R${b.amount}/${b.cadence}`),
+      debts: debts.map(d => `${d.label} R${d.balance} outstanding`)
+    };
+  }
+  return out;
+}
+
+module.exports = { TABLES: Object.keys(TABLES), list, create, update, remove, summary, discover, context };
