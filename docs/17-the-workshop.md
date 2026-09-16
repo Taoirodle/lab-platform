@@ -90,22 +90,24 @@ It prints a URL and a one-time code that expires in 15 minutes. Open the URL on
 any device, enter the code, done. The session writes `~/.codex/auth.json` and
 survives reboots.
 
-**Gemini** requires an interactive terminal and a localhost callback, so it
-needs a forwarded port:
+**Gemini** cannot use the subscription — see *Gemini is currently unavailable*
+below. The OAuth path completes and is then refused by Google. It needs an API
+key instead, placed on the server by Tao himself:
 
 ```bash
-ssh -i ~/.ssh/lab_ed25519 -L 8111:localhost:8111 tao@192.168.1.115
+ssh -i ~/.ssh/lab_ed25519 tao@192.168.1.115
 ```
 
-then, inside that session:
+then, inside that session, with the key from aistudio.google.com/apikey:
 
 ```bash
-OAUTH_CALLBACK_PORT=8111 gemini --skip-trust
+mkdir -p ~/.gemini && nano ~/.gemini/.env     # GEMINI_API_KEY=your-key-here
+chmod 600 ~/.gemini/.env
 ```
 
-Choose **Login with Google**, open the printed URL in the browser on Twizzler,
-and sign in. The callback comes back down the tunnel to the server. Credentials
-land in `~/.gemini/`.
+For the record of why it is done that way: an API key is a credential, so it
+goes from Tao to the server directly. It is not pasted into chat, and Claude
+never handles the value.
 
 Admin → The Workshop shows which engines are ready and prints the exact command
 for any that are not.
