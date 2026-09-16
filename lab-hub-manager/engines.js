@@ -54,8 +54,18 @@ const ENGINES = {
     bin: process.env.LAB_CODEX || 'codex',
     strength: 'precise code edits, refactors, writing tests',
     // Codex prints an event stream; --output-last-message gives us the clean answer.
+    //
+    // network_access=true is not laziness. Ubuntu 24.04 blocks unprivileged
+    // user namespaces via AppArmor, so bubblewrap cannot build the network
+    // namespace and the whole sandbox fails to start with
+    //   bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted
+    // Leaving the network shared skips that step and keeps the part that
+    // actually protects this server: the filesystem confinement. The
+    // alternative was turning off a kernel hardening flag on the family's
+    // machine, which is a worse trade for a smaller gain.
     args: (prompt, o) => {
       const a = ['exec', '--skip-git-repo-check', '--color', 'never',
+                 '-c', 'sandbox_workspace_write.network_access=true',
                  '-s', o.write ? 'workspace-write' : 'read-only'];
       if (o.cwd) a.push('-C', o.cwd);
       if (o.model) a.push('-m', o.model);
@@ -94,6 +104,60 @@ const BOUNDARY = [
   ['the house registry',         /\bhouse_(providers|bills|debts|contacts|facts|assets)\b/i]
 ];
 
+// ---- file context ------------------------------------------------------
+// Ubuntu 24.04 blocks the unprivileged user namespaces that Codex's sandbox
+// needs to shell out, so an engine cannot always read files for itself. It
+// does not need to: the Manager already has the filesystem. We read the files
+// and hand them over in the prompt, which is faster, cheaper, and auditable —
+// we know exactly what left the house because we assembled it.
+const FILE_CAP = 200000;          // total bytes of attached source
+const FILE_MAX = 12;              // how many files one prompt may carry
+const CODE_EXT = /\.(js|mjs|cjs|ts|json|md|html|css|toml|rs|sh|yml|yaml|sql|py)$/i;
+
+function readContext(paths, root = WORKSPACE) {
+  const taken = [], skipped = [];
+  let budget = FILE_CAP;
+  for (const raw of (paths || []).slice(0, FILE_MAX)) {
+    const rel = String(raw).replace(/^[./]+/, '');
+    const abs = path.resolve(root, rel);
+    if (!abs.startsWith(path.resolve(root))) { skipped.push([rel, 'outside the workspace']); continue; }
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) { skipped.push([rel, 'not found']); continue; }
+    const size = fs.statSync(abs).size;
+    if (size > budget) { skipped.push([rel, `too large (${Math.round(size / 1024)}KB)`]); continue; }
+    let body;
+    try { body = fs.readFileSync(abs, 'utf8'); } catch (e) { skipped.push([rel, e.code || 'unreadable']); continue; }
+    budget -= size;
+    taken.push({ rel, body });
+  }
+  return { taken, skipped };
+}
+
+// Pull plausible repo paths out of a prompt so "look at presence.js" just works.
+function mentionedFiles(prompt, root = WORKSPACE) {
+  const out = new Set();
+  for (const m of String(prompt).matchAll(/[\w][\w./-]*\.[A-Za-z]{1,5}\b/g)) {
+    const tok = m[0].replace(/^[./]+/, '');
+    if (!CODE_EXT.test(tok)) continue;
+    const abs = path.resolve(root, tok);
+    if (abs.startsWith(path.resolve(root)) && fs.existsSync(abs) && fs.statSync(abs).isFile()) out.add(tok);
+  }
+  return [...out].slice(0, FILE_MAX);
+}
+
+function withContext(prompt, files) {
+  if (!files.length) return prompt;
+  const blocks = files.map(f => `--- ${f.rel} ---\n${f.body}`).join('\n\n');
+  return `${prompt}\n\n` +
+    `The files below are attached in full — you do not need to read them from disk.\n\n${blocks}`;
+}
+
+// Applied to attached source rather than typed text: live credentials only.
+const SECRET_IN_FILE = [
+  ['an API key',        /\b(sk-[A-Za-z0-9]{12,}|ghp_[A-Za-z0-9]{20,}|AIza[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,})\b/],
+  ['a private key',     /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
+  ['an assigned password', /\b(password|passwd|secret)\s*[:=]\s*["'][^"']{6,}["']/i]
+];
+
 // Throws if the prompt would carry household data to a third party.
 function guard(prompt) {
   const hit = BOUNDARY.find(([, re]) => re.test(prompt));
@@ -114,10 +178,13 @@ function guard(prompt) {
 // briefly so the Admin page can poll without spawning processes constantly.
 let cache = { at: 0, val: null };
 
+// stdin is 'ignore', not a pipe. Codex sees an open stdin pipe as "there is
+// more prompt coming" and blocks forever waiting for it — every job looked
+// like a timeout until we closed the tap.
 function run(bin, args, { timeout = 15000, cwd } = {}) {
   return new Promise(resolve => {
     let child;
-    try { child = spawn(bin, args, { cwd, env: process.env }); }
+    try { child = spawn(bin, args, { cwd, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] }); }
     catch (e) { return resolve({ code: -1, out: '', err: e.message }); }
     let out = '', err = '';
     const t = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, timeout);
@@ -128,40 +195,91 @@ function run(bin, args, { timeout = 15000, cwd } = {}) {
   });
 }
 
-async function probe(name) {
+// Liveness, learned rather than assumed. Credential files on disk prove
+// nothing: Gemini's OAuth wrote a perfectly good oauth_creds.json and then the
+// service refused the account anyway ("no longer supported for Gemini Code
+// Assist for individuals"). So an engine is only "ok" once it has actually
+// answered something, and a real job failing on auth marks it dead again.
+const LIVE_TTL = 15 * 60000;
+const live = {};   // name -> { ok, at, reason }
+
+// Turn a CLI's failure text into something a human can act on.
+function readFailure(name, text) {
+  const t = String(text || '');
+  if (/IneligibleTier|no longer supported for Gemini Code Assist/i.test(t))
+    return 'Google has dropped Code Assist for individual accounts on this CLI — needs a GEMINI_API_KEY from aistudio.google.com/apikey';
+  if (/not logged in|Please (sign|log) in|unauthor|401|invalid[_ ]api[_ ]key/i.test(t))
+    return name === 'codex' ? 'run: codex login --device-auth'
+         : name === 'gemini' ? 'no valid credentials — set GEMINI_API_KEY'
+         : 'run: claude  (sign in once)';
+  if (/Please set an Auth method|GEMINI_API_KEY/i.test(t))
+    return 'no auth method set — put GEMINI_API_KEY in ~/.gemini/.env';
+  if (/quota|rate.?limit|429|exhausted/i.test(t)) return 'quota or rate limit reached';
+  return t.split('\n').map(s => s.trim()).filter(Boolean).pop() || 'did not answer';
+}
+
+// Record what a real invocation told us about an engine.
+function noteResult(name, ok, text) {
+  live[name] = { ok, at: Date.now(), reason: ok ? null : readFailure(name, text) };
+}
+
+async function liveness(name, bin) {
+  const cached = live[name];
+  if (cached && Date.now() - cached.at < LIVE_TTL) return cached;
+  const e = ENGINES[name];
+  const args = e.args('Reply with exactly: OK', { write: false, cwd: null, model: null, lastMessageFile: null });
+  // Codex takes ~30-60s even for a trivial prompt — 45s was killing healthy engines.
+  const r = await run(bin, args, { timeout: 120000, cwd: '/srv/lab/manager' });
+  const ok = r.code === 0 && /\bOK\b/i.test(`${r.out}\n${r.err}`);
+  noteResult(name, ok, r.err || r.out);
+  return live[name];
+}
+
+async function probe(name, { deep = false } = {}) {
   const e = ENGINES[name];
   if (!e) return { name, ok: false, reason: 'unknown engine' };
   const ver = await run(e.bin, ['--version']);
-  if (ver.code !== 0) return { name, label: e.label, vendor: e.vendor, ok: false, installed: false, reason: 'not installed' };
+  if (ver.code !== 0)
+    return { name, label: e.label, vendor: e.vendor, ok: false, installed: false, reason: 'not installed' };
   const version = (ver.out || '').split('\n')[0].trim();
 
-  // Signed in? Each CLI reports this differently.
-  let signedIn = false, who = null, reason = null;
-  if (name === 'codex') {
-    const s = await run(e.bin, ['login', 'status']);
-    signedIn = s.code === 0 && !/not logged in/i.test(s.out + s.err);
-    who = signedIn ? (s.out.split('\n').find(l => /@|account|plan/i.test(l)) || '').trim() || null : null;
-    if (!signedIn) reason = 'run: codex login --device-auth';
-  } else if (name === 'gemini') {
-    const home = process.env.HOME || '/home/tao';
-    signedIn = fs.existsSync(path.join(home, '.gemini', 'oauth_creds.json'))
-            || fs.existsSync(path.join(home, '.gemini', 'google_accounts.json'))
-            || !!process.env.GEMINI_API_KEY;
-    if (!signedIn) reason = 'run: gemini  (pick "Login with Google" once)';
-  } else if (name === 'claude') {
-    const home = process.env.HOME || '/home/tao';
-    signedIn = fs.existsSync(path.join(home, '.claude', '.credentials.json'))
-            || fs.existsSync(path.join(home, '.claude.json'))
-            || !!process.env.ANTHROPIC_API_KEY;
-    if (!signedIn) reason = 'run: claude  (sign in once)';
+  // Cheap check first: is there anything that could count as a credential?
+  const home = process.env.HOME || '/home/tao';
+  const hasCreds =
+    // codex reports login state on stderr, not stdout — read both.
+    name === 'codex'  ? await (async () => { const s = await run(e.bin, ['login', 'status']);
+                                             const txt = `${s.out}\n${s.err}`.trim();
+                                             return !!txt && !/not logged in/i.test(txt); })()
+  : name === 'gemini' ? (!!process.env.GEMINI_API_KEY
+                         || fs.existsSync(path.join(home, '.gemini', '.env'))
+                         || fs.existsSync(path.join(home, '.gemini', 'oauth_creds.json')))
+  : /* claude */        (!!process.env.ANTHROPIC_API_KEY
+                         || fs.existsSync(path.join(home, '.claude', '.credentials.json'))
+                         || fs.existsSync(path.join(home, '.claude.json')));
+
+  if (!hasCreds) {
+    const reason = name === 'codex' ? 'run: codex login --device-auth'
+                 : name === 'gemini' ? 'set GEMINI_API_KEY in ~/.gemini/.env'
+                 : 'run: claude  (sign in once)';
+    return { name, label: e.label, vendor: e.vendor, strength: e.strength,
+             ok: false, installed: true, version, reason };
   }
+
+  // Credentials exist — but do they work? Use what we last learned, and only
+  // spend a real call when that knowledge has gone stale or was asked for.
+  let state = live[name];
+  if (deep || !state || Date.now() - state.at >= LIVE_TTL) state = await liveness(name, e.bin);
+
   return { name, label: e.label, vendor: e.vendor, strength: e.strength,
-           ok: signedIn, installed: true, version, who, reason };
+           ok: !!state.ok, installed: true, version,
+           checked: state.at, reason: state.ok ? null : state.reason };
 }
 
 async function health({ fresh = false } = {}) {
   if (!fresh && cache.val && Date.now() - cache.at < 30000) return cache.val;
-  const val = await Promise.all(Object.keys(ENGINES).map(probe));
+  const names = Object.keys(ENGINES);
+  const val = [];
+  for (const n of names) val.push(await probe(n, { deep: fresh }));  // serial: liveness spawns real CLIs
   cache = { at: Date.now(), val };
   return val;
 }
@@ -197,8 +315,8 @@ function trim() {
 }
 
 function summary(j) {
-  const { id, engine, role, brief, status, started, ended, ms, cwd, write, error, rule } = j;
-  return { id, engine, role, brief, status, started, ended, ms, cwd, write, error, rule,
+  const { id, engine, role, brief, status, started, ended, ms, cwd, write, error, rule, attached, skipped } = j;
+  return { id, engine, role, brief, status, started, ended, ms, cwd, write, error, rule, attached, skipped,
            chars: j.out ? j.out.length : 0 };
 }
 
@@ -206,10 +324,26 @@ function summary(j) {
 async function ask(prompt, opts = {}) {
   const {
     engine: want, role = 'coder', timeout = DEFAULT_TIMEOUT,
-    write = false, cwd = null, model = null, actor = 'system', brief = null
+    write = false, cwd = null, model = null, actor = 'system', brief = null,
+    files = null, attach = true
   } = opts;
 
   guard(prompt);                                    // data boundary first
+
+  // Attach source. The strict boundary above applies to what a human typed;
+  // attached files get the narrower credential check instead, because the
+  // workspace is a clone of a public repo — refusing it for containing the
+  // string "house_bills" would make the feature useless.
+  const wanted = files || (attach ? mentionedFiles(prompt) : []);
+  const { taken, skipped } = readContext(wanted);
+  for (const f of taken) {
+    const leak = SECRET_IN_FILE.find(([, re]) => re.test(f.body));
+    if (leak) {
+      const e = new Error(`refused: ${f.rel} contains ${leak[0]}`);
+      e.code = 'BOUNDARY'; e.rule = leak[0]; throw e;
+    }
+  }
+  const finalPrompt = withContext(prompt, taken);
 
   const engine = want || await pick(role);
   if (!engine) { const e = new Error('no engine is signed in'); e.code = 'NO_ENGINE'; throw e; }
@@ -238,14 +372,15 @@ async function ask(prompt, opts = {}) {
   const job = {
     id: uid(), engine, role, brief: brief || prompt.slice(0, 120),
     status: 'running', started: Date.now(), ended: null, ms: 0,
-    cwd: dir, write: !!write, out: '', err: '', error: null, actor
+    cwd: dir, write: !!write, out: '', err: '', error: null, actor,
+    attached: taken.map(f => f.rel), skipped: skipped.map(([p, why]) => `${p}: ${why}`)
   };
   jobs.set(job.id, job);
   running++;
 
   const lastMessageFile = def.usesLastMessageFile
     ? path.join(os.tmpdir(), `lab-engine-${job.id}.txt`) : null;
-  const args = def.args(prompt, { write, cwd: dir, model, lastMessageFile });
+  const args = def.args(finalPrompt, { write, cwd: dir, model, lastMessageFile });
   const t = Math.min(Number(timeout) || DEFAULT_TIMEOUT, MAX_TIMEOUT);
 
   const res = await run(def.bin, args, { timeout: t, cwd: dir });
@@ -266,7 +401,10 @@ async function ask(prompt, opts = {}) {
   job.out = (text || '').trim();
   job.err = (res.err || '').slice(0, 4000);
   job.status = job.out ? 'done' : 'failed';
-  if (!job.out) job.error = job.err.split('\n').slice(-3).join(' ').trim() || `exit ${res.code}`;
+  if (!job.out) job.error = readFailure(engine, job.err || `exit ${res.code}`);
+  // A real job is better evidence than any probe — let it correct the record.
+  noteResult(engine, job.status === 'done', job.err);
+  cache = { at: 0, val: null };
   running--;
   trim();
 

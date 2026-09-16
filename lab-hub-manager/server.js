@@ -724,9 +724,10 @@ app.post('/api/engines/ask', wrap(async (req, res) => {
     const j = await engines.ask(String(b.prompt), {
       engine: b.engine || null, role: b.role || 'coder',
       write: !!b.write, timeout: b.timeout, model: b.model || null,
+      files: Array.isArray(b.files) ? b.files : null, attach: b.attach !== false,
       actor: b.actor || 'admin', brief: b.brief || null
     });
-    res.json({ id: j.id, engine: j.engine, ms: j.ms, answer: j.out });
+    res.json({ id: j.id, engine: j.engine, ms: j.ms, attached: j.attached, skipped: j.skipped, answer: j.out });
   } catch (e) { engineFail(res, e); }
 }));
 

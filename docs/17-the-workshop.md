@@ -139,3 +139,61 @@ process.
 - A promotion path: engine works in the clone, produces a branch, admin reviews
   the diff in the portal, and only then does it deploy.
 - Per-engine quota awareness so a run does not silently burn a month's limit.
+
+---
+
+## Field notes from getting it running
+
+Four things bit us. All four are recorded because they will bite again.
+
+**Codex blocks on an open stdin pipe.** Spawned with a default stdin pipe it
+prints `Reading additional input from stdin...` and waits forever, so every job
+looked like a timeout. `stdio: ['ignore','pipe','pipe']` fixes it. Jobs went
+from 5+ minutes to 16 seconds.
+
+**`codex login status` writes to stderr, not stdout.** Reading only stdout made
+a signed-in Codex look signed out.
+
+**Ubuntu 24.04 blocks unprivileged user namespaces** via
+`kernel.apparmor_restrict_unprivileged_userns=1`, so Codex's bubblewrap sandbox
+cannot start and any shell command it tries fails with `Operation not
+permitted`. Two mitigations, neither of which touches the kernel setting:
+`sandbox_workspace_write.network_access=true` skips the network-namespace step
+that fails first, and the Manager now attaches file contents itself rather than
+letting the engine shell out to read them. Filesystem confinement — the part
+that actually protects this server — is retained.
+
+**Credential files on disk prove nothing.** Gemini's OAuth completed and wrote a
+valid `oauth_creds.json`, and the service then refused the account anyway. An
+engine is now only `ok` once it has actually answered, and a failing job marks
+it dead again with the reason.
+
+## Gemini is currently unavailable
+
+Google has withdrawn Gemini Code Assist for individual accounts on this CLI:
+
+> This client is no longer supported for Gemini Code Assist for individuals.
+> To continue using Gemini, please migrate to the Antigravity suite of products.
+
+Antigravity is a desktop IDE, so it cannot run headless on the server. The
+remaining official path is a `GEMINI_API_KEY` from
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey), placed in
+`~/.gemini/.env` on the server as `GEMINI_API_KEY=...`. That is a separate
+Google product from the Gemini subscription — the subscription does not carry
+over to it. The engine layer already detects this and prints the instruction.
+
+## Proof it works
+
+Asked Codex to read `presence.js` cold, it found a real defect in 16 seconds:
+stale neighbour-table entries can keep someone marked home with `certain`
+confidence after they have left.
+
+Then `review()` was asked for the smallest correct fix. Codex proposed requiring
+`REACHABLE` in the ARP filter. Claude rejected it with two specific objections —
+ICMP does not give the kernel upper-layer confirmation, so present devices read
+as `DELAY`/`PROBE` and would all be marked away; and MAC-only assets that are
+never pinged would regress permanently — and proposed keeping the ping result,
+which the code currently throws away, as the confirmation instead.
+
+That is the whole argument for this module in one exchange. A single engine
+would have shipped the first fix.

@@ -608,7 +608,8 @@
       const r = await fetch(MGR+'/api/engines/'+kind,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       const d = await r.json();
       if(!r.ok){ wShow(wCard(d.code==='BOUNDARY'?'Refused — data boundary':'Failed', d.error||'unknown error')); }
-      else if(kind==='ask')   wShow(wCard(d.engine+' · '+(d.ms/1000).toFixed(1)+'s', d.answer));
+      else if(kind==='ask')   wShow(wCard(d.engine+' · '+(d.ms/1000).toFixed(1)+'s'
+        + (d.attached&&d.attached.length ? ' · read '+d.attached.join(', ') : ''), d.answer));
       else if(kind==='panel') wShow(d.answers.map(a=>wCard(a.engine+(a.ok?' · '+(a.ms/1000).toFixed(1)+'s':' · failed'), a.ok?a.answer:a.error)).join(''));
       else wShow(wCard('Final — drafted by '+d.drafted_by+', reviewed by '+(d.reviewers||[]).join(', '), d.final)
         + (d.critiques||[]).map(c=>wCard('Review · '+c.engine, c.critique||c.error||'')).join(''));
