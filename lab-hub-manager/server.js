@@ -23,8 +23,9 @@ const wizard = require('./wizard');
 const calendar = require('./calendar');
 const house = require('./house');
 const presence = require('./presence');
+const engines = require('./engines');
 
-const VERSION = 'M-000026';
+const VERSION = 'M-000027';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
@@ -41,7 +42,7 @@ app.use(express.json());
 const viaTunnel = req => !!(req.headers['cf-connecting-ip'] || req.headers['cf-ray'] || req.headers['x-forwarded-host']);
 const SENSITIVE = [
   /^\/$/, /^\/admin(\/|$)/, /^\/install(\/|$)/, /^\/showcase(\/|$)/,
-  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/devices|app\/sync|audit|house)/
+  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/devices|app\/sync|audit|house|engines)/
 ];
 app.use(async (req, res, next) => {
   if (!viaTunnel(req)) return next();                         // on the home network → trusted
@@ -694,6 +695,67 @@ app.get('/api/live/:source', wrap(async (req, res) => {
   if (!fn) return res.status(404).json({ error: 'unknown live source' });
   try { res.json({ source: req.params.source, ...(await fn(req.query || {})) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
+}));
+
+// ---- The Workshop: Claude / Codex / Gemini as build engines --------------
+// SENSITIVE (LAN-only). These spawn real coding agents on the server, so they
+// are never reachable through the tunnel without an admin key. Writes are
+// confined to the workspace clone by engines.js, not by trust.
+app.get('/api/engines', wrap(async (req, res) =>
+  res.json({ engines: await engines.health({ fresh: req.query.fresh === '1' }),
+             workspace: engines.WORKSPACE, boundary: engines.BOUNDARY })));
+
+app.get('/api/engines/jobs', (req, res) => res.json(engines.list()));
+app.get('/api/engines/jobs/:id', (req, res) => {
+  const j = engines.get(req.params.id);
+  if (!j) return res.status(404).json({ error: 'no such job' });
+  res.json(j);
+});
+
+const engineFail = (res, e) => res.status(
+  e.code === 'BOUNDARY' ? 422 : e.code === 'BUSY' ? 429 :
+  e.code === 'NO_ENGINE' ? 503 : e.code === 'SANDBOX' ? 403 : 500
+).json({ error: e.message, code: e.code || null, rule: e.rule || null });
+
+app.post('/api/engines/ask', wrap(async (req, res) => {
+  const b = req.body || {};
+  if (!b.prompt) return res.status(400).json({ error: 'prompt required' });
+  try {
+    const j = await engines.ask(String(b.prompt), {
+      engine: b.engine || null, role: b.role || 'coder',
+      write: !!b.write, timeout: b.timeout, model: b.model || null,
+      actor: b.actor || 'admin', brief: b.brief || null
+    });
+    res.json({ id: j.id, engine: j.engine, ms: j.ms, answer: j.out });
+  } catch (e) { engineFail(res, e); }
+}));
+
+app.post('/api/engines/panel', wrap(async (req, res) => {
+  const b = req.body || {};
+  if (!b.prompt) return res.status(400).json({ error: 'prompt required' });
+  try { res.json({ answers: await engines.panel(String(b.prompt), { timeout: b.timeout, actor: b.actor || 'admin' }) }); }
+  catch (e) { engineFail(res, e); }
+}));
+
+app.post('/api/engines/review', wrap(async (req, res) => {
+  const b = req.body || {};
+  if (!b.task) return res.status(400).json({ error: 'task required' });
+  try { res.json(await engines.review(String(b.task), { engine: b.engine || null, role: b.role || 'coder', timeout: b.timeout, actor: b.actor || 'admin' })); }
+  catch (e) { engineFail(res, e); }
+}));
+
+// What have the engines actually changed in the workspace clone?
+app.get('/api/engines/workspace', wrap(async (req, res) => {
+  const { execFile } = require('child_process');
+  const git = a => new Promise(r => execFile('git', ['-C', engines.WORKSPACE, ...a], { timeout: 20000 },
+    (e, so) => r(e ? '' : so.trim())));
+  res.json({
+    path: engines.WORKSPACE,
+    branch: await git(['rev-parse', '--abbrev-ref', 'HEAD']),
+    head: await git(['log', '-1', '--format=%h %s']),
+    dirty: (await git(['status', '--porcelain'])).split('\n').filter(Boolean),
+    diffstat: await git(['diff', '--stat'])
+  });
 }));
 
 // ---- The House Registry: the household's single source of truth ----------

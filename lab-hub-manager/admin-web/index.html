@@ -262,6 +262,24 @@
     <div class="btns" id="h-tabs" style="margin:16px 0 4px"></div>
     <div id="h-body"><div class="empty">Loading…</div></div>
   </div>
+
+  <div class="lbl">The Workshop <span class="hint">Claude · Codex · Gemini — three engines on the server, one bench</span></div>
+  <div class="card" id="workshop">
+    <div class="tiles" id="w-engines"></div>
+    <div id="w-ws" class="hint" style="margin:12px 0 6px"></div>
+    <textarea id="w-prompt" rows="3" placeholder="Ask the engines something about the code — e.g. &quot;find every place the manager writes to the database without a try/catch&quot;"
+      style="width:100%;box-sizing:border-box;font:13px/1.5 'Segoe UI';padding:10px;border:1px solid #d8d8d8;resize:vertical"></textarea>
+    <div class="btns" style="margin:10px 0;flex-wrap:wrap;align-items:center">
+      <select id="w-engine" style="font:12px 'Segoe UI';padding:8px"><option value="">Best available</option></select>
+      <button class="btn" id="w-ask">Ask</button>
+      <button class="btn" id="w-panel">Ask all three</button>
+      <button class="btn" id="w-review">Draft &amp; review</button>
+      <span class="hint" id="w-state"></span>
+    </div>
+    <div id="w-out"></div>
+    <div class="lbl" style="margin-top:18px">Recent engine jobs</div>
+    <div id="w-jobs"><div class="empty">No jobs yet.</div></div>
+  </div>
 </main>
 
 <script src="/labloader.js"></script>
@@ -543,9 +561,69 @@
   }
   const tile = (k,v,sub)=>`<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="u">${esc(sub||'')}</div></div>`;
 
+  /* ---------- The Workshop: the coding engines ---------- */
+  let wBusy = false;
+  async function loadWorkshop(){
+    let d; try{ d = await api('/api/engines'); }catch{ $('w-engines').innerHTML=''; return; }
+    $('w-engines').innerHTML = d.engines.map(e=>tile(
+      e.label,
+      e.ok ? 'ready' : (e.installed ? 'sign in' : 'missing'),
+      e.ok ? (e.strength||'').split(',')[0] : (e.reason||'')
+    )).join('');
+    const sel = $('w-engine'), keep = sel.value;
+    sel.innerHTML = '<option value="">Best available</option>' +
+      d.engines.filter(e=>e.ok).map(e=>`<option value="${esc(e.name)}">${esc(e.label)}</option>`).join('');
+    sel.value = keep;
+    const off = d.engines.filter(e=>!e.ok);
+    $('w-ws').innerHTML = `Workspace <code>${esc(d.workspace)}</code> — engines may only write here, never the live server.`
+      + (off.length ? `<br><b>${off.length} engine${off.length>1?'s':''} not signed in.</b> On the server run: `
+          + off.map(e=>`<code>${esc((e.reason||'').replace(/^run:\s*/,''))}</code>`).join(' &nbsp; ') : '');
+    try{
+      const ws = await api('/api/engines/workspace');
+      if (ws && ws.head) $('w-ws').innerHTML += `<br>Clone at <code>${esc(ws.branch)}</code> · ${esc(ws.head)}`
+        + (ws.dirty && ws.dirty.length ? ` · <b>${ws.dirty.length} uncommitted change${ws.dirty.length>1?'s':''}</b>` : ' · clean');
+    }catch{}
+  }
+  async function loadJobs(){
+    let j; try{ j = await api('/api/engines/jobs'); }catch{ return; }
+    if(!j.length){ $('w-jobs').innerHTML='<div class="empty">No jobs yet.</div>'; return; }
+    $('w-jobs').innerHTML = '<table><tr><th>When</th><th>Engine</th><th>Task</th><th>Took</th><th></th></tr>' +
+      j.slice(0,12).map(x=>`<tr><td>${new Date(x.started).toLocaleTimeString()}</td><td>${esc(x.engine)}</td>
+        <td>${esc((x.brief||'').slice(0,70))}</td><td>${(x.ms/1000).toFixed(1)}s</td>
+        <td>${x.status==='done'?'<span style="color:var(--good)">ok</span>':'<span style="color:var(--bad)">'+esc(x.error||x.status)+'</span>'}</td></tr>`).join('') + '</table>';
+  }
+  function wShow(html){ $('w-out').innerHTML = html; }
+  const wCard = (title, body) =>
+    `<div style="border:1px solid #e2e2e2;margin:10px 0;padding:12px 14px">
+       <div style="font:600 11px 'Segoe UI';letter-spacing:1.2px;text-transform:uppercase;color:var(--accent);margin-bottom:8px">${esc(title)}</div>
+       <div style="font:13px/1.6 'Segoe UI';white-space:pre-wrap">${esc(body)}</div></div>`;
+
+  async function wRun(kind){
+    const prompt = $('w-prompt').value.trim();
+    if(!prompt || wBusy) return;
+    wBusy = true; $('w-state').textContent = 'thinking…'; wShow('');
+    const body = kind==='review' ? {task:prompt, engine:$('w-engine').value||null, timeout:600000}
+                                 : {prompt, engine:$('w-engine').value||null, timeout:600000};
+    try{
+      const r = await fetch(MGR+'/api/engines/'+kind,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const d = await r.json();
+      if(!r.ok){ wShow(wCard(d.code==='BOUNDARY'?'Refused — data boundary':'Failed', d.error||'unknown error')); }
+      else if(kind==='ask')   wShow(wCard(d.engine+' · '+(d.ms/1000).toFixed(1)+'s', d.answer));
+      else if(kind==='panel') wShow(d.answers.map(a=>wCard(a.engine+(a.ok?' · '+(a.ms/1000).toFixed(1)+'s':' · failed'), a.ok?a.answer:a.error)).join(''));
+      else wShow(wCard('Final — drafted by '+d.drafted_by+', reviewed by '+(d.reviewers||[]).join(', '), d.final)
+        + (d.critiques||[]).map(c=>wCard('Review · '+c.engine, c.critique||c.error||'')).join(''));
+    }catch(e){ wShow(wCard('Failed', (e&&e.message)||'could not reach the Manager')); }
+    wBusy = false; $('w-state').textContent = ''; loadJobs();
+  }
+  $('w-ask').onclick    = ()=>wRun('ask');
+  $('w-panel').onclick  = ()=>wRun('panel');
+  $('w-review').onclick = ()=>wRun('review');
+
   function startPortal(){
     boot = LabLoader.overlay({ label: 'L.A.B Admin' });
     loadHouse(); setInterval(loadHouse, 120000);
+    loadWorkshop(); setInterval(loadWorkshop, 60000);
+    loadJobs(); setInterval(loadJobs, 20000);
     connect();
     initNeural();
     loadHubDevices();
