@@ -365,7 +365,27 @@ Return ONLY a JSON array, one entry per item, same order:
         if (row) verdicts.push({ id: row.id, name: row.name, title: row.title, keep: v.keep !== false, why: String(v.why || '').slice(0, 160) });
       }
     } catch (e) {
-      verdicts.push({ error: `batch ${i / BATCH + 1} failed: ${e.message}` });
+      // One card mentioning the word "password" once cost us a review of the
+      // other twenty-nine in its batch. Rather than soften the boundary — it was
+      // doing its job — narrow the blast radius: re-run the batch one at a time
+      // and let only the actual offender fall out, flagged for a human.
+      if (e.code === 'BOUNDARY') {
+        for (const row of batch) {
+          try {
+            const one = prompt.replace(/THE BATCH[\s\S]*$/, `THE BATCH (1 item):\n1. ${JSON.stringify(compact(kind, row))}\n\n` +
+              `Return ONLY a JSON array: [{"name":"${row.name}","keep":true|false,"why":"a few words"}]`);
+            const raw = await engines.text(one, { engine: critic, attach: false, timeout: 120000, actor: 'retrospect' });
+            const c = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+            const v = JSON.parse(c.slice(c.indexOf('['), c.lastIndexOf(']') + 1))[0] || {};
+            verdicts.push({ id: row.id, name: row.name, title: row.title, keep: v.keep !== false, why: String(v.why || '').slice(0, 160) });
+          } catch (inner) {
+            verdicts.push({ id: row.id, name: row.name, title: row.title, keep: true, unreviewed: true,
+              why: inner.code === 'BOUNDARY' ? `kept unreviewed — its own text tripped the data boundary (${inner.rule})` : `kept unreviewed — ${inner.message}` });
+          }
+        }
+      } else {
+        verdicts.push({ error: `batch ${i / BATCH + 1} failed: ${e.message}` });
+      }
     }
   }
 
