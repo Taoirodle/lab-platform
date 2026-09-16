@@ -69,8 +69,10 @@ const ENGINES = {
     label: 'Gemini', vendor: 'Google',
     bin: process.env.LAB_GEMINI || 'gemini',
     strength: 'very large context, cross-file sweeps, second opinions',
+    // --skip-trust: headless runs have no way to answer the trusted-folder
+    // prompt, and the only directory we ever hand it is our own clone.
     args: (prompt, o) => {
-      const a = ['-p', prompt, '-o', 'text',
+      const a = ['-p', prompt, '-o', 'text', '--skip-trust',
                  '--approval-mode', o.write ? 'auto_edit' : 'plan'];
       if (o.model) a.push('-m', o.model);
       return a;
