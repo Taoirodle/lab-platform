@@ -291,6 +291,96 @@ const list = ({ kind, status } = {}) => {
 };
 const setStatus = (id, status) => db.pool.query('UPDATE generations SET status=$2 WHERE id=$1 RETURNING id,kind,title,status', [id, status]).then(r => r.rows[0]);
 
+// ---- RETROSPECT ------------------------------------------------------------
+// The critic above only guards new work. It does nothing about the 362 things
+// already published, which is where the actual problem lives. This runs the
+// same judgement over the existing library — in batches, so the reviewer can
+// see the whole set at once and spot the duplication that is invisible one
+// artifact at a time.
+//
+// It reports by default and changes nothing. Un-publishing hundreds of things
+// on a family's live dashboard is not a call an agent should make on its own,
+// so `apply` has to be asked for explicitly.
+const BATCH = 30;
+
+function compact(kind, r) {
+  const p = r.payload || {};
+  if (kind === 'skin') {
+    const v = p.vars || {};
+    return { name: r.name, title: r.title, summary: r.summary, bg: v['--bg'], a1: v['--a1'], a2: v['--a2'] };
+  }
+  if (kind === 'widget') {
+    return { name: r.name, title: r.title, template: p.template, source: p.source || null,
+             items: (p.items || []).slice(0, 3) };
+  }
+  return { name: r.name, title: r.title, summary: r.summary,
+           sections: (p.sections || []).map(s => s.heading).slice(0, 5) };
+}
+
+async function retrospect({ kind = 'skin', apply = false, limit = 400 } = {}) {
+  const rows = await db.pool.query(
+    `SELECT id,name,title,summary,payload FROM generations
+     WHERE kind=$1 AND status='published' ORDER BY created_at ASC LIMIT $2`, [kind, limit]).then(r => r.rows);
+  if (!rows.length) return { kind, reviewed: 0, verdicts: [], applied: false };
+
+  let critic = null;
+  try { critic = (await engines.available())[0] || null; } catch {}
+  if (!critic) return { kind, reviewed: 0, error: 'no engine is signed in', verdicts: [], applied: false };
+
+  const verdicts = [];
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const batch = rows.slice(i, i + BATCH);
+    const prompt =
+`You are auditing what an AI build team has already published to a real family's
+home dashboard. Nobody reviewed any of it at the time. Two days of unattended
+building produced roughly a hundred colour themes and a hundred cards, and the
+family's own verdict was that it "doesn't do anything helpful or fun".
+
+Your job is to say which of these earn their place and which are clutter.
+
+Drop it if:
+ - it is a near-duplicate of another entry in this list
+ - it is decoration with no function
+ - it recites generic advice instead of showing real household information
+ - it is about domestic chores the family has said they do not want
+   (bin day especially — in South Africa it is one fixed day and needs no card)
+
+Keep it only if a person in that house would notice it missing.
+
+Be decisive. If most of this batch is clutter, say so — do not spread your
+answers out to seem balanced.
+
+THE BATCH (${batch.length} of ${rows.length} total ${kind}s):
+${batch.map((r, n) => `${n + 1}. ${JSON.stringify(compact(kind, r))}`).join('\n')}
+
+Return ONLY a JSON array, one entry per item, same order:
+[{"name":"<the name field>","keep":true|false,"why":"a few words"}]`;
+
+    try {
+      const raw = await engines.text(prompt, { engine: critic, attach: false, timeout: 300000, actor: 'retrospect' });
+      const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const arr = JSON.parse(cleaned.slice(cleaned.indexOf('['), cleaned.lastIndexOf(']') + 1));
+      for (const v of arr) {
+        const row = batch.find(r => r.name === v.name);
+        if (row) verdicts.push({ id: row.id, name: row.name, title: row.title, keep: v.keep !== false, why: String(v.why || '').slice(0, 160) });
+      }
+    } catch (e) {
+      verdicts.push({ error: `batch ${i / BATCH + 1} failed: ${e.message}` });
+    }
+  }
+
+  const drop = verdicts.filter(v => v.id && !v.keep);
+  let applied = false;
+  if (apply && drop.length) {
+    await db.pool.query(`UPDATE generations SET status='rejected' WHERE id = ANY($1::text[])`, [drop.map(v => v.id)]);
+    await db.audit('retrospect', 'generations.retired', { kind, count: drop.length, critic });
+    applied = true;
+  }
+  return { kind, critic, reviewed: verdicts.filter(v => v.id).length,
+           keep: verdicts.filter(v => v.keep).length, drop: drop.length,
+           applied, verdicts };
+}
+
 // re-judge a staged page with the current rules (used after validator improvements)
 async function revalidatePages() {
   const rows = await db.pool.query("SELECT id,title,payload FROM generations WHERE kind='page' AND status='staged'").then(r => r.rows);
@@ -304,4 +394,4 @@ async function revalidatePages() {
   return out;
 }
 
-module.exports = { generateSkin, generateWidget, generatePage, validatePage, revalidatePages, list, setStatus };
+module.exports = { generateSkin, generateWidget, generatePage, validatePage, revalidatePages, retrospect, list, setStatus };

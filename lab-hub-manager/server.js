@@ -992,6 +992,13 @@ app.get('/api/generations', wrap(async (req, res) => res.json(await builders.lis
 app.post('/api/generations/skin', wrap(async (req, res) => res.json(await builders.generateSkin({ brief: (req.body && req.body.brief) || '' }))));
 app.post('/api/generations/widget', wrap(async (req, res) => res.json(await builders.generateWidget({ brief: (req.body && req.body.brief) || '' }))));
 app.post('/api/generations/page', wrap(async (req, res) => res.json(await builders.generatePage({ brief: (req.body && req.body.brief) || '' }))));
+
+// Turn the critic on what is ALREADY published. Reports by default; retiring
+// hundreds of live cards needs {"apply":true} asked for on purpose.
+app.post('/api/generations/retrospect', wrap(async (req, res) => {
+  const b = req.body || {};
+  res.json(await builders.retrospect({ kind: b.kind || 'skin', apply: b.apply === true, limit: Number(b.limit) || 400 }));
+}));
 app.post('/api/generations/:id/:decision', wrap(async (req, res) => {
   const d = req.params.decision;
   if (!['publish', 'reject', 'stage'].includes(d)) return res.status(400).json({ error: 'bad decision' });
