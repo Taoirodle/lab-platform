@@ -149,7 +149,7 @@ Rules: dark background, clearly legible light text, two accent colours that harm
 const WIDGET_TEMPLATES = ['tips', 'checklist', 'focus', 'live'];
 // The whitelist a 'live' widget may bind to. Must match the LIVE map in
 // server.js — the server validates again, so a stale entry here fails closed.
-const WIDGET_SOURCES = ['todos_open', 'events_next', 'kit_unconfirmed', 'kit_summary', 'rooms_on', 'usage_today', 'usage_week', 'house_facts'];
+const WIDGET_SOURCES = ['loadshedding', 'todos_open', 'events_next', 'kit_unconfirmed', 'kit_summary', 'rooms_on', 'usage_today', 'usage_week', 'house_facts'];
 function validateWidget(w) {
   if (!w || !WIDGET_TEMPLATES.includes(w.template) || !w.title) return false;
   // A live card carries no prose of its own: it names real data and frames it.

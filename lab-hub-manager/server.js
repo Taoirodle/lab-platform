@@ -24,8 +24,9 @@ const calendar = require('./calendar');
 const house = require('./house');
 const presence = require('./presence');
 const engines = require('./engines');
+const loadshedding = require('./loadshedding');
 
-const VERSION = 'M-000027';
+const VERSION = 'M-000028';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
@@ -615,6 +616,8 @@ app.post('/api/admin/invite', wrap(async (req, res) => {
 // and how to frame it, and cannot invent the numbers. Family-safe by design —
 // nothing here exposes money, serials or identifiers, so it is not SENSITIVE.
 const LIVE = {
+  // Keyless national stage from Eskom; area schedule when a token is saved.
+  async loadshedding() { return loadshedding.headline(); },
   async todos_open() {
     const rows = await db.pool.query('SELECT list, text FROM shared_todos WHERE NOT done ORDER BY created_at DESC LIMIT 40').then(r => r.rows);
     const per = {}; rows.forEach(r => { per[r.list] = (per[r.list] || 0) + 1; });
@@ -688,6 +691,14 @@ const LIVE = {
 // ---- Presence: who is home, from the network alone -----------------------
 app.get('/api/presence', wrap(async (req, res) => res.json(presence.current())));
 app.post('/api/presence/sweep', wrap(async (req, res) => res.json(await presence.sweep())));
+
+app.get('/api/loadshedding', wrap(async (req, res) => res.json(loadshedding.current())));
+app.post('/api/loadshedding/refresh', wrap(async (req, res) => { await loadshedding.pollStage(); await loadshedding.pollArea(); res.json(loadshedding.current()); }));
+app.get('/api/loadshedding/areas', wrap(async (req, res) => {
+  if (!req.query.q) return res.status(400).json({ error: 'q required' });
+  try { res.json({ areas: await loadshedding.findArea(String(req.query.q)) }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+}));
 
 app.get('/api/live/sources', (req, res) => res.json(Object.keys(LIVE)));
 app.get('/api/live/:source', wrap(async (req, res) => {
@@ -1059,6 +1070,7 @@ collectStats();
       startLedgerSchedulers();
       calendar.start();
       conductor.startClock();
+      loadshedding.start();
       presence.start(async ({ device, home }) => {
         const p = presence.current();
         const anyoneHome = (p.devices || []).some(d => d.home);
