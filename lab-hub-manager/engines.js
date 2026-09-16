@@ -101,7 +101,11 @@ const BOUNDARY = [
   ['a bank or card number',      /\b(?:\d[ -]?){13,19}\b/],
   ['a South African phone number', /\b(?:\+27|0)\s?[1-8]\d(?:[\s-]?\d){7}\b/],
   ['a household money figure',   /\bR\s?\d[\d ,.]{3,}\b/],
-  ['the house registry',         /\bhouse_(providers|bills|debts|contacts|facts|assets)\b/i]
+  // Querying the registry is the risk; naming a source is not. The widget
+  // builder legitimately lists "house_facts" as a data source it may bind to,
+  // and a bare-name rule refused every widget we tried to generate.
+  ['a query against the house registry',
+   /\b(from|into|update|join|table|select\b[^;]*\bfrom)\s+house_(providers|bills|debts|contacts|facts|assets)\b/i]
 ];
 
 // ---- file context ------------------------------------------------------

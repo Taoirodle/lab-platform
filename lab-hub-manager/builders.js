@@ -27,6 +27,73 @@ function askClaude(prompt, timeout = 150000) {
     child.on('close', () => { clearTimeout(t); out.trim() ? resolve(out.trim()) : reject(new Error(err.trim() || 'no output')); });
   });
 }
+// ---- THE CRITIC ------------------------------------------------------------
+// Everything below this line exists because two days of unattended building
+// produced thirty variations of the colour orange, and every one of them passed
+// validation. Of course they did: the validators are mechanical. They can tell
+// you a colour is a colour and that a list has between one and eight items.
+// They cannot tell you this is the thirty-first orange, or that a card recites
+// platitudes nobody asked for.
+//
+// That judgement needs a different model from the one that wrote it, with the
+// existing library in front of it, and — the part that actually matters —
+// permission to say no. A critic that cannot reject is a rubber stamp.
+const engines = require('./engines');
+
+// Generate with whichever engine suits the job, falling back to the old direct
+// Claude call if the engine layer has nothing signed in.
+async function generate(prompt, role = 'writer') {
+  try { return await engines.text(prompt, { role, attach: false, timeout: 240000, actor: 'builders' }); }
+  catch (e) {
+    if (e.code === 'NO_ENGINE') return askClaude(prompt);
+    throw e;
+  }
+}
+
+async function judge({ kind, artifact, existing = [], author = null }) {
+  let critic = null;
+  try {
+    const up = await engines.available();
+    critic = up.find(n => n !== author) || null;
+  } catch {}
+  // No independent second opinion means no automatic publish. Staged is the
+  // honest outcome: a human can still promote it.
+  if (!critic) return { verdict: 'stage', why: 'no second engine was available to review this', critic: null };
+
+  const prompt =
+`You are the last check before something an AI team built goes onto a real
+family's home dashboard. Your job is to keep slop off the screen. You are not
+here to be encouraging.
+
+Reject it if any of these are true:
+ - it is a minor variation on something already in the library below
+ - it recites generic advice or motivational filler instead of showing real
+   household information
+ - nobody in the house would notice if it quietly disappeared
+
+The bar is simple: it has to be useful, or it has to be fun. Something that is
+neither is clutter, and clutter is what we are trying to stop.
+
+KIND: ${kind}
+ALREADY IN THE LIBRARY (${existing.length}): ${existing.join(' | ') || '(nothing yet)'}
+
+THE CANDIDATE
+${JSON.stringify(artifact).slice(0, 4000)}
+
+Return ONLY JSON: {"verdict":"publish"|"stage"|"reject","why":"one short sentence"}
+publish = genuinely earns its place. stage = not embarrassing but not worth
+auto-shipping. reject = clutter.`;
+
+  try {
+    const raw = await engines.text(prompt, { engine: critic, attach: false, timeout: 240000, actor: 'critic' });
+    const v = parseJSON(raw);
+    const verdict = ['publish', 'stage', 'reject'].includes(v.verdict) ? v.verdict : 'stage';
+    return { verdict, why: String(v.why || '').slice(0, 200), critic };
+  } catch (e) {
+    return { verdict: 'stage', why: `the reviewer could not be reached (${e.message})`, critic };
+  }
+}
+
 function parseJSON(text) {
   const c = text.replace(/```json/gi, '').replace(/```/g, '').trim();
   const s = c.indexOf('{'), e = c.lastIndexOf('}');
@@ -58,16 +125,24 @@ Avoid repeating these existing skins: ${existing.join(', ') || '(none yet)'}
 
 Rules: dark background, clearly legible light text, two accent colours that harmonise. Return ONLY JSON:
 {"name":"kebab-slug","title":"Evocative Name","summary":"one line on the mood","vars":{"--bg":"#hex","--panel":"rgba(255,255,255,.05)","--panel2":"rgba(255,255,255,.08)","--stroke":"rgba(255,255,255,.10)","--txt":"#hex","--txt2":"#hex","--a1":"#hex","--a2":"#hex"}}`;
-  const g = parseJSON(await askClaude(prompt));
+  const author = await engines.pick('writer').catch(() => null);
+  const g = parseJSON(await generate(prompt, 'writer'));
   const vars = g.vars || {};
   const tested = validateSkin(vars);
+  // Mechanical check first — no point asking a critic about an illegible theme.
+  const verdict = tested
+    ? await judge({ kind: 'skin', artifact: { title: g.title, summary: g.summary, vars }, existing, author })
+    : { verdict: 'stage', why: 'failed the legibility check', critic: null };
+  const status = tested && verdict.verdict === 'publish' ? 'published'
+               : verdict.verdict === 'reject' ? 'rejected' : 'staged';
   const id = uid();
   await db.pool.query(
-    `INSERT INTO generations(id,kind,name,title,summary,payload,status,tested,agent)
-     VALUES($1,'skin',$2,$3,$4,$5,$6,$7,$8)`,
+    `INSERT INTO generations(id,kind,name,title,summary,payload,meta,status,tested,agent)
+     VALUES($1,'skin',$2,$3,$4,$5,$6,$7,$8,$9)`,
     [id, String(g.name || 'skin-' + id).slice(0, 40), String(g.title || 'New Skin').slice(0, 60),
-     String(g.summary || '').slice(0, 160), JSON.stringify({ vars }), tested ? 'published' : 'staged', tested, agent]);
-  return { id, kind: 'skin', name: g.name, title: g.title, tested, status: tested ? 'published' : 'staged' };
+     String(g.summary || '').slice(0, 160), JSON.stringify({ vars }),
+     JSON.stringify({ author, ...verdict }), status, tested, agent]);
+  return { id, kind: 'skin', name: g.name, title: g.title, tested, status, verdict: verdict.verdict, why: verdict.why, critic: verdict.critic };
 }
 
 // ---- WIDGETS (structured, rendered by trusted Hub templates) ---------------
@@ -107,16 +182,24 @@ ${brief ? 'Brief: ' + brief : ''}
 For live: {"template":"live","source":"<one of the above>","name":"kebab-slug","title":"Card Title","summary":"one line on why it matters","accent":"#hex"}
 For the others: {"template":"tips|checklist|focus","name":"kebab-slug","title":"Card Title","summary":"one line","accent":"#hex","items":["short line", "..."]} with 3-6 short, real items.
 Return ONLY the JSON.`;
-  const w = parseJSON(await askClaude(prompt));
+  const author = await engines.pick('coder').catch(() => null);
+  const w = parseJSON(await generate(prompt, 'coder'));
   const tested = validateWidget(w);
+  const priorCards = await db.pool.query("SELECT title FROM generations WHERE kind='widget' AND status='published' ORDER BY created_at DESC LIMIT 20")
+    .then(r => r.rows.map(x => x.title)).catch(() => []);
+  const verdict = tested
+    ? await judge({ kind: 'widget', artifact: w, existing: priorCards, author })
+    : { verdict: 'stage', why: 'failed the template check', critic: null };
+  const status = tested && verdict.verdict === 'publish' ? 'published'
+               : verdict.verdict === 'reject' ? 'rejected' : 'staged';
   const id = uid();
   await db.pool.query(
-    `INSERT INTO generations(id,kind,name,title,summary,payload,status,tested,agent)
-     VALUES($1,'widget',$2,$3,$4,$5,$6,$7,$8)`,
+    `INSERT INTO generations(id,kind,name,title,summary,payload,meta,status,tested,agent)
+     VALUES($1,'widget',$2,$3,$4,$5,$6,$7,$8,$9)`,
     [id, String(w.name || 'widget-' + id).slice(0, 40), String(w.title || 'New Widget').slice(0, 60),
      String(w.summary || '').slice(0, 160), JSON.stringify({ template: w.template, source: w.source, accent: w.accent, items: (w.items || []).map(s => String(s).slice(0, 120)) }),
-     tested ? 'published' : 'staged', tested, agent]);
-  return { id, kind: 'widget', name: w.name, title: w.title, tested, status: tested ? 'published' : 'staged' };
+     JSON.stringify({ author, ...verdict }), status, tested, agent]);
+  return { id, kind: 'widget', name: w.name, title: w.title, tested, status, verdict: verdict.verdict, why: verdict.why, critic: verdict.critic };
 }
 
 // ---- PAGES (whole tabs, structured sections rendered by trusted templates) --
@@ -175,17 +258,26 @@ Avoid repeating these existing pages: ${existing.join(', ') || '(none yet)'}
 HARD RULES: never invent facts about this family's setup — no hostnames, IP addresses, ports, device names, service names or numbers you were not given. If a block would need such facts, write it as guidance the person fills in, or leave it out. Links only to real, well-known public sites. Metrics only if the value is genuinely known from the brief.
 
 Return ONLY JSON: {"name":"kebab-slug","title":"Tab Name (1-2 words)","icon":"one of ${PAGE_ICONS.join('|')}","summary":"one line on what it's for","sections":[{"heading":"Section","block":"text|list|links|metric|checklist|steps","items":[...]}]} with 2-5 sections, each 2-8 items, everything short and real.`;
-  const p = parseJSON(await askClaude(prompt));
+  const author = await engines.pick('architect').catch(() => null);
+  const p = parseJSON(await generate(prompt, 'architect'));
   const id = uid();
   // sanitise first (drop what doesn't fit the templates), then judge what's left
   const payload = { icon: PAGE_ICONS.includes(p.icon) ? p.icon : 'star', sections: sanitizeSections(p.sections, brief) };
   const tested = validatePage({ title: p.title, sections: payload.sections });
+  const priorPages = await db.pool.query("SELECT title FROM generations WHERE kind='page' AND status='published' ORDER BY created_at DESC LIMIT 25")
+    .then(r => r.rows.map(x => x.title)).catch(() => []);
+  const verdict = tested
+    ? await judge({ kind: 'page', artifact: { title: p.title, summary: p.summary, ...payload }, existing: priorPages, author })
+    : { verdict: 'stage', why: 'failed the section checks', critic: null };
+  const status = tested && verdict.verdict === 'publish' ? 'published'
+               : verdict.verdict === 'reject' ? 'rejected' : 'staged';
   await db.pool.query(
-    `INSERT INTO generations(id,kind,name,title,summary,payload,status,tested,agent)
-     VALUES($1,'page',$2,$3,$4,$5,$6,$7,$8)`,
+    `INSERT INTO generations(id,kind,name,title,summary,payload,meta,status,tested,agent)
+     VALUES($1,'page',$2,$3,$4,$5,$6,$7,$8,$9)`,
     [id, String(p.name || 'page-' + id).slice(0, 40), String(p.title || 'New Page').slice(0, 40),
-     String(p.summary || '').slice(0, 160), JSON.stringify(payload), tested ? 'published' : 'staged', tested, agent]);
-  return { id, kind: 'page', name: p.name, title: p.title, tested, status: tested ? 'published' : 'staged' };
+     String(p.summary || '').slice(0, 160), JSON.stringify(payload),
+     JSON.stringify({ author, ...verdict }), status, tested, agent]);
+  return { id, kind: 'page', name: p.name, title: p.title, tested, status, verdict: verdict.verdict, why: verdict.why, critic: verdict.critic };
 }
 
 // ---- store helpers ---------------------------------------------------------
