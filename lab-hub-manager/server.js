@@ -25,30 +25,50 @@ const house = require('./house');
 const presence = require('./presence');
 const engines = require('./engines');
 const loadshedding = require('./loadshedding');
+const tailscale = require('./tailscale');
 
-const VERSION = 'M-000028';
+const VERSION = 'M-000029';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
 const app = express();
 app.use(express.json());
 
-// ---- Off-network guard (defense-in-depth for the Cloudflare tunnel) --------
-// Direct LAN traffic is trusted. Anything arriving THROUGH the tunnel (Cloudflare
-// adds cf-connecting-ip / cf-ray) may ONLY touch the family surface — the Hub,
-// shared data, the Sauce, the store, the kiosk. The whole control plane (Manager
-// dashboard, Admin, Installer, settings, dev-team, ledgers, Conductor writes) is
-// refused off-network unless a valid admin key is presented. Belt-and-suspenders
-// behind the tunnel's own Hub-only ingress config.
-const viaTunnel = req => !!(req.headers['cf-connecting-ip'] || req.headers['cf-ray'] || req.headers['x-forwarded-host']);
+// ---- Off-network guard -------------------------------------------------------
+// Home is the LAN: a private address talking to us directly. Everything else is
+// off-network — a Tailscale device (100.64.0.0/10: family away from home, or you
+// on your phone), anything behind a proxy (the Cloudflare tunnel adds cf-*
+// headers), any public address. Off-network traffic may ONLY touch the family
+// surface — the Hub, shared data, the Sauce, the store, the kiosk. The whole
+// control plane (Manager dashboard, Admin, Installer, settings, dev-team, ledgers,
+// Conductor config, Tailscale) is refused unless a valid admin key is presented.
+// Deciding by address rather than by the absence of a header means a new way in
+// starts locked.
+const peerIP = req => (req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+const viaProxy = req => !!(req.headers['cf-connecting-ip'] || req.headers['cf-ray'] || req.headers['x-forwarded-for']
+  || req.headers['x-forwarded-host'] || req.headers['tailscale-user-login']);
+function isHomeIP(ip) {
+  if (ip === '127.0.0.1' || ip === '::1') return true;
+  if (tailscale.isTailnetIP(ip)) return false;        // before the private ranges: fd7a:… is also unique-local
+  const m = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(ip);
+  if (m) { const a = +m[1], b = +m[2]; return a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254); }
+  return /^(fe[89ab]|f[cd])/i.test(ip);               // IPv6 link-local and unique-local
+}
+const offNetwork = req => viaProxy(req) || !isHomeIP(peerIP(req));
 const SENSITIVE = [
   /^\/$/, /^\/admin(\/|$)/, /^\/install(\/|$)/, /^\/showcase(\/|$)/,
-  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/devices|app\/sync|audit|house|engines)/
+  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/devices|app\/sync|audit|house|engines|tailscale)/
 ];
+// The two Conductor calls the Hub's House tab makes. Running a scene is the same
+// kind of act as tapping a kiosk light; building or editing one stays home-only.
+const FAMILY_OK = [['GET', /^\/api\/conductor\/scenes$/], ['POST', /^\/api\/conductor\/scenes\/[^/]+\/run$/]];
 app.use(async (req, res, next) => {
-  if (!viaTunnel(req)) return next();                         // on the home network → trusted
+  const ip = peerIP(req);
+  if (tailscale.isTailnetIP(ip)) tailscale.touch(ip);
+  if (!offNetwork(req)) return next();                        // on the home network → trusted
   if (req.method === 'OPTIONS') return next();
   if (!SENSITIVE.some(re => re.test(req.path))) return next(); // family surface → allowed off-network
+  if (FAMILY_OK.some(([m, re]) => m === req.method && re.test(req.path))) return next();
   const token = req.headers['x-lab-token'], key = req.headers['x-lab-key'];
   if (token && key) {
     try { if (await db.admins.verifyKey(String(token), String(key))) return next(); } catch {}
@@ -79,10 +99,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// The address the house knows this box by — never the Tailscale or Docker side,
+// which would hand pairing links and key files an address the LAN can't use.
 function lanIP() {
-  const nets = os.networkInterfaces();
-  for (const name of Object.keys(nets)) for (const n of nets[name] || []) if (n.family === 'IPv4' && !n.internal) return n.address;
-  return '127.0.0.1';
+  const nets = os.networkInterfaces(), found = [];
+  for (const name of Object.keys(nets)) {
+    if (/^(tailscale|docker|br-|veth|virbr)/.test(name)) continue;
+    for (const n of nets[name] || []) if (n.family === 'IPv4' && !n.internal) found.push(n.address);
+  }
+  return found.find(a => /^(10|192\.168)\./.test(a) || /^172\.(1[6-9]|2\d|3[01])\./.test(a)) || found[0] || '127.0.0.1';
 }
 
 let lastStats = null;
@@ -117,7 +142,8 @@ async function collectStats() {
 app.get('/api/identity', (req, res) => res.json({
   app: 'L.A.B Hub Manager', version: VERSION, node: os.hostname(), kind: 'Main Server',
   ip: lanIP(), platform: `${os.type()} ${os.release()}`, cpuModel: (os.cpus()[0] || {}).model || 'unknown',
-  cores: os.cpus().length, totalMem: os.totalmem(), dataRoot: DATA_ROOT, started: START
+  cores: os.cpus().length, totalMem: os.totalmem(), dataRoot: DATA_ROOT, started: START,
+  away: tailscale.address(PORT)          // the Hub's Tailscale address, once off-site access is on
 }));
 app.get('/api/stats', async (req, res) => res.json(lastStats || await collectStats()));
 app.get('/api/health', (req, res) => res.json({ ok: true, version: VERSION }));
@@ -598,6 +624,21 @@ app.post('/api/fleet/checkin/:token', wrap(async (req, res) => {
 }));
 app.delete('/api/fleet/:id', wrap(async (req, res) => { await db.devices.remove(req.params.id); db.audit('admin', 'fleet.remove', { id: req.params.id }); res.json({ ok: true }); }));
 
+// ---- Off-site access (Tailscale) — home network only, like the rest of the control plane ----
+const tsView = s => ({ ...s, hub: tailscale.address(PORT) });
+app.get('/api/tailscale', wrap(async (req, res) => res.json(tsView(await tailscale.status(req.query.fresh === '1')))));
+app.post('/api/tailscale/:act(up|down)', wrap(async (req, res) => {
+  const on = req.params.act === 'up';
+  const s = await tailscale.setRunning(on);
+  db.audit('admin', on ? 'tailscale.on' : 'tailscale.off', { state: s.state });
+  res.json(tsView(s));
+}));
+app.post('/api/tailscale/login', wrap(async (req, res) => {
+  const s = await tailscale.login();
+  db.audit('admin', 'tailscale.login', { state: s.state });
+  res.json(tsView(s));
+}));
+
 // ---- admin onboarding (backed by the SQL Brain) ----
 app.get('/api/admin/list', wrap(async (req, res) => res.json(await db.admins.list())));
 // Invite a family member: the account is created with a one-time PIN shown to the admin once;
@@ -1057,6 +1098,7 @@ function broadcast(msg) { const p = JSON.stringify(msg); for (const c of wss.cli
 
 setInterval(async () => { try { broadcast({ type: 'stats', data: await collectStats() }); } catch { /* keep looping */ } }, 2000);
 collectStats();
+tailscale.status().catch(() => {});      // so the first page load already knows the away address
 
 // connect the SQL Brain (retry — the Postgres container may still be booting)
 (async function initDB() {

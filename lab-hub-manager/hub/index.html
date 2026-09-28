@@ -245,7 +245,7 @@
         <div class="set"><div class="l">Signed in as<div class="s" id="s-acct">—</div></div><button class="btn" id="logout">Sign out</button></div>
         <div class="set"><div class="l">Server<div class="s" id="s-node">—</div></div><span class="status"><i></i>online</span></div>
         <div class="set"><div class="l">Admin Portal<div class="s">Approvals, AI controls, the neural map (needs your USB key)</div></div><a class="btn" href="/admin/" target="_blank">Open</a></div>
-        <div class="set"><div class="l">Off-home access<div class="s">Let family reach the Hub from outside (e.g. your brother)</div></div><span class="s" style="color:var(--warm)">Tunnel — staged</span></div>
+        <div class="set"><div class="l">Away from home<div class="s" id="s-away">Family reach the Hub from outside the house through Tailscale</div></div><span class="s" id="s-away-st" style="color:var(--warm)">Not set up</span></div>
       </div>
       <div class="card">
         <h3>Theme <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">made by your AI</span></h3>
@@ -451,7 +451,8 @@
     $('greet').textContent=`Hi ${me.name}`;
     $('s-acct').textContent=me.name;
     tick(); setInterval(tick,1000);
-    try{const id=await api('/api/identity'); $('hosted').textContent='hosted by '+id.node; $('s-node').textContent=id.node; $('foot').textContent='L.A.B Hub · shared family surface · from '+id.node;}catch{}
+    try{const id=await api('/api/identity'); $('hosted').textContent='hosted by '+id.node; $('s-node').textContent=id.node; $('foot').textContent='L.A.B Hub · shared family surface · from '+id.node;
+      if(id.away){ $('s-away').innerHTML='With Tailscale on, open <b>'+esc(id.away.url)+'</b>'; $('s-away-st').textContent='On'; $('s-away-st').style.color='var(--ok)'; }}catch{}
     loadTodos(); loadEvents(); loadFamilyStats(); loadFeeds(); loadTargets(); loadSkins();
     $('ics-url').textContent=location.origin+'/api/calendar/family.ics';
     // live: when anyone changes a shared thing, this page refreshes it at once

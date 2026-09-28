@@ -136,6 +136,17 @@
   .kg .hint a{color:var(--steel);cursor:pointer;text-decoration:none}
   #kg-lock{font-size:11px;color:var(--ink3);cursor:pointer;letter-spacing:1px;text-transform:uppercase;margin-top:4px;display:inline-block}
   #kg-lock:hover{color:var(--bad)}
+  /* off-site access */
+  .tsrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid var(--line)}
+  .tsrow .k{width:118px;flex:none;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--ink3);font-weight:600}
+  .tsrow code{flex:1 1 260px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:"Cascadia Code","SF Mono",Consolas,monospace;font-size:12px;background:var(--surface2);border:1px solid var(--line);padding:7px 10px}
+  #ts .tile .v.addr{font-size:19px;letter-spacing:0;margin-top:14px;overflow-wrap:anywhere}
+  #ts .tile .u{overflow-wrap:anywhere}
+  .tsrow .s{font-size:12px;color:var(--ink2)}
+  .tsgrp{font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--ink3);font-weight:600;padding:14px 22px 2px}
+  .tsauth{padding:16px 20px;border-bottom:1px solid var(--line);border-left:3px solid var(--amber);font-size:13px;line-height:1.55}
+  .tsnote{padding:12px 20px 16px;font-size:12px;color:var(--ink3);line-height:1.6}
+  .tswarn{padding:10px 20px;border-bottom:1px solid var(--line);font-size:12px;color:var(--amber)}
 </style>
 </head>
 <body>
@@ -255,6 +266,9 @@
       <div class="card" id="audit"><div class="empty">Loading…</div></div>
     </div>
   </div>
+
+  <div class="lbl">Off-site access <span class="hint">Tailscale · a private network to this server · nothing is public</span></div>
+  <div class="card" id="ts"><div class="empty">Loading…</div></div>
 
   <div class="lbl">The House <span class="hint">the household's single source of truth · never leaves the home network</span></div>
   <div class="card" id="house">
@@ -561,6 +575,69 @@
   }
   const tile = (k,v,sub)=>`<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="u">${esc(sub||'')}</div></div>`;
 
+  /* ---------- Off-site access: Tailscale ---------- */
+  // The server's view of its Tailscale network: who can reach it, who actually
+  // did, and the switch. Off the home network everyone gets the Hub only — the
+  // guard keeps this Portal home-only whatever the network says.
+  const TS_STATE = { Running:'On', Stopped:'Off', NeedsLogin:'Signed out', NeedsMachineAuth:'Awaiting approval', Starting:'Starting', NoState:'Starting', Unavailable:'Not answering' };
+  const since = t => { if(!t) return '—'; const s=(Date.now()-new Date(t))/1000; return s<90?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':Math.round(s/86400)+' d ago'; };
+  const attr = s => esc(s).replace(/"/g,'&quot;');
+  // the Portal is served over plain http on the LAN, where the async clipboard API does not exist
+  function copyText(t){
+    if(navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t);
+    const ta=document.createElement('textarea'); ta.value=t; ta.style.cssText='position:fixed;opacity:0'; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); }catch{} ta.remove(); return Promise.resolve();
+  }
+  let tsBusy = false, tsMsg = '';
+  async function loadTailscale(fresh){
+    let s; try{ s = await api('/api/tailscale'+(fresh?'?fresh=1':'')); }catch{ $('ts').innerHTML='<div class="empty">Could not read the server\'s Tailscale state.</div>'; return; }
+    if(!s.installed){ $('ts').innerHTML=`<div class="empty">${s.error?esc(s.error):'Tailscale is not installed on this server, so nothing outside the house can reach it.'}</div>`; return; }
+    const me = s.self||{}, peers = s.peers||[], on = peers.filter(p=>p.online).length, signedIn = s.state==='Running'||s.state==='Stopped';
+    const exp = signedIn&&me.key_expiry ? new Date(me.key_expiry) : null, days = exp ? Math.floor((exp-Date.now())/864e5) : null;
+    let h = `<div class="tiles" style="padding:16px 20px">`
+      + tile('Status', TS_STATE[s.state]||s.state||'—', s.error ? s.error : s.tailnet ? s.tailnet.name : (s.version?'Tailscale '+s.version:''))
+      + tile('This server', me.ip||'—', me.dns||'no address until signed in').replace('class="v"','class="v mono addr"')
+      + tile('Can reach it', peers.length ? on+' / '+peers.length : '0', peers.length ? 'devices online now' : 'nobody yet')
+      + tile('Sign-in expires', !signedIn ? '—' : exp ? (days<0?'expired':days+' days') : 'never', exp ? exp.toLocaleDateString() : signedIn ? 'no expiry on this server' : '')
+      + `</div>`;
+    if(/^Needs/.test(s.state||'')){
+      const url = s.auth_url && /^https:\/\//.test(s.auth_url) ? s.auth_url : null;
+      h += `<div class="tsauth">` + (s.state==='NeedsMachineAuth'
+          ? `<b>Waiting for approval.</b> Approve this server in the Tailscale admin console, under Machines.`
+          : url ? `<b>Sign this server in.</b> Open the link and sign in with your Tailscale account.<div class="tsrow" style="padding:10px 0 0;border:0"><code>${esc(url)}</code><a class="btn" href="${attr(url)}" target="_blank" rel="noopener" style="text-decoration:none">Open</a></div>`
+          : `<b>This server is signed out of Tailscale</b>, so nobody outside the house can reach it. <button class="btn" id="ts-login" style="margin-left:10px" ${tsBusy?'disabled':''}>${tsBusy?'Asking…':'Get a sign-in link'}</button>`)
+        + `</div>`;
+    }
+    if(exp && days < 30) h += `<div class="tswarn">The server's Tailscale sign-in ${days<0?'has expired':'expires in '+days+' days'}. Open it in the Tailscale admin console and choose Disable key expiry — a server should not sign itself out.</div>`;
+    (s.health||[]).forEach(w=>{ h += `<div class="tswarn">${esc(w)}</div>`; });
+    if(s.hub){
+      h += `<div class="tsrow"><span class="k">Family link</span><code>${esc(s.hub.url)}</code><button class="btn" data-copy="${attr(s.hub.url)}">Copy</button></div>`;
+      if(s.hub.dns_url) h += `<div class="tsrow"><span class="k">By name</span><code>${esc(s.hub.dns_url)}</code><button class="btn" data-copy="${attr(s.hub.dns_url)}">Copy</button></div>`;
+    }
+    if(peers.length){
+      const groups = {};
+      peers.forEach(p=>{ const g = p.guest ? 'Shared with · '+p.owner : p.owner; (groups[g]=groups[g]||[]).push(p); });
+      h += Object.entries(groups).map(([g,list])=>`<div class="tsgrp">${esc(g)} · ${list.length}</div>` + list.map(p=>`
+        <div class="dev"><div><b>${esc(p.name)}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(p.os||'—')} · ${esc(p.ip||'')}${p.link?' · '+esc(p.link):''}${p.hub_seen?' · <span style="color:var(--ink2)">used the Hub '+since(p.hub_seen)+'</span>':''}</span></div>
+        <span class="st ${p.expired?'offline':p.online?'online':'pending'}" style="white-space:nowrap;margin-left:12px">${p.expired?'sign-in expired':p.online?'online':(p.last_seen?'seen '+since(p.last_seen):'offline')}</span></div>`).join('')).join('');
+    } else if(s.state==='Running') h += `<div class="empty">No other device can reach this server yet.</div>`;
+    h += `<div class="tsrow" style="border-bottom:0">`
+      + (s.state==='Running' ? `<button class="btn rej" data-ts="down" ${tsBusy?'disabled':''}>Cut off-site access</button><span class="s">Everyone outside the house loses the Hub until you switch it back. Home is unaffected.</span>`
+        : s.state==='Stopped' ? `<button class="btn" data-ts="up" ${tsBusy?'disabled':''}>Switch off-site access on</button><span class="s">Off. Nobody outside the house can reach the Hub.</span>` : '')
+      + `<span style="flex:1"></span>${tsMsg?`<span class="s" style="color:var(--bad)">${esc(tsMsg)}</span>`:''}`
+      + `<a class="s" href="https://login.tailscale.com/admin/machines" target="_blank" rel="noopener" style="color:var(--steel);text-decoration:none;white-space:nowrap">Tailscale admin console</a></div>`;
+    h += `<div class="tsnote">To let someone in, open this server in the Tailscale admin console and choose <b>Share</b>. They install Tailscale, accept, and open the family link. Off the home network everyone gets the Hub only — the Manager, this Portal and the Installer stay home-only.</div>`;
+    $('ts').innerHTML = h;
+    $('ts').querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>copyText(b.dataset.copy).then(()=>{ b.textContent='Copied'; setTimeout(()=>{ b.textContent='Copy'; },1500); }).catch(()=>{}));
+    $('ts').querySelectorAll('[data-ts]').forEach(b=>b.onclick=()=>tsDo('/api/tailscale/'+b.dataset.ts));
+    const lg=$('ts-login'); if(lg) lg.onclick=()=>tsDo('/api/tailscale/login');
+  }
+  async function tsDo(path){
+    if(tsBusy) return; tsBusy=true; tsMsg=''; loadTailscale();
+    const r = await api(path,{method:'POST'}).catch(()=>({error:'Could not reach the Manager.'}));
+    tsBusy=false; tsMsg=r.error||''; loadTailscale(true);
+  }
+
   /* ---------- The Workshop: the coding engines ---------- */
   let wBusy = false;
   async function loadWorkshop(){
@@ -623,6 +700,7 @@
   function startPortal(){
     boot = LabLoader.overlay({ label: 'L.A.B Admin' });
     loadHouse(); setInterval(loadHouse, 120000);
+    loadTailscale(); setInterval(loadTailscale, 30000);
     loadWorkshop(); setInterval(loadWorkshop, 60000);
     loadJobs(); setInterval(loadJobs, 20000);
     connect();

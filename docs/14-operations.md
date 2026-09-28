@@ -31,10 +31,11 @@ Measurements from the personal app live in `usage_samples` (one row per device-m
    *Until GitHub Actions is unblocked on the account (billing lock), only the Windows build exists; Mac/Linux get the setup wizard.*
 
 ## Away from home (Tailscale)
-1. On the server: `curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up` (one browser authorisation), then `tailscale ip -4` → the 100.x address.
-2. Family members install Tailscale on their devices and join the same tailnet.
+Full picture in `07-hosting-and-offsite-access.md`. Day to day it's **Admin → Off-site access**: state, the family link, who can reach the server, and the on/off switch.
+1. Installed from Tailscale's apt repo; brought up with `sudo tailscale up --operator=tao --accept-dns=false`. If the server is ever signed out, the Admin panel shows a fresh sign-in link.
+2. To let someone in: Tailscale admin console → lab-main-01 → **Share**. They install Tailscale, accept, and open the family link.
 3. In the app: Settings → Where your L.A.B is → **Away** = `http://100.x.y.z:8090`. The app tries home first, then away, and shows which it's on in the footer.
-4. Control-plane routes stay home-network-only behind the off-network guard; the family surface (hub, calendar, list, Sauce, store) works over Tailscale.
+4. Everything arriving over Tailscale is off-network to the Manager: family surface only, control plane 403. `scripts/smoke.sh http://100.x.y.z:8090` run from a tailnet device checks exactly that.
 
 ## The builders
 Admin → Builders desk shows what the AI team generated (skins / widgets / pages), lets you publish or reject, and has "Skin / Widget / Page now" buttons. Pages are sanitised (no invented network facts) and never added to anyone's sidebar without them choosing it in the App Store.
