@@ -7,6 +7,8 @@
 //  as plain rows. The family calendar (shared_events) merges in at query time.
 // ============================================================
 const db = require('./db');
+const dns = require('dns').promises;
+const net = require('net');
 
 const REFRESH_MS = 30 * 60 * 1000;
 const WINDOW_PAST_DAYS = 30, WINDOW_FUTURE_DAYS = 365, MAX_INSTANCES = 500, MAX_BYTES = 5 * 1024 * 1024;
@@ -143,16 +145,42 @@ function expand(ev, winStart, winEnd, tz) {
   return out.filter(ms => !ev.exdates.has(ms));
 }
 
+// A calendar link is fetched by the server, so it must never be a way to make the
+// server fetch something inside the house: not a private or tailnet address, not
+// a public name that resolves to one, and not a public link that redirects to one.
+function privateAddr(ip) {
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split('.').map(Number);
+    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+      || (a === 100 && b >= 64 && b <= 127) || a >= 224;          // CGNAT (Tailscale lives here), multicast, reserved
+  }
+  const v = ip.toLowerCase();
+  if (v.startsWith('::ffff:')) return privateAddr(v.slice(7));
+  return v === '::' || v === '::1' || /^f[cd]/.test(v) || /^fe[89ab]/.test(v) || /^ff/.test(v);
+}
+async function assertPublic(u) {
+  if (!/^https?:$/.test(u.protocol)) throw new Error('only http(s)/webcal links');
+  const host = u.hostname.replace(/^\[|\]$/g, '');
+  const addrs = net.isIP(host) ? [host] : (await dns.lookup(host, { all: true, verbatim: true })).map(a => a.address);
+  if (!addrs.length || addrs.some(privateAddr)) throw new Error('local addresses are not allowed');
+}
+
 /// Fetch + parse + expand a feed into rows ready for calendar_events.
 async function materialize(feed) {
   let url = String(feed.url).trim().replace(/^webcal:\/\//i, 'https://');
-  const u = new URL(url);
-  if (!/^https?:$/.test(u.protocol)) throw new Error('only http(s)/webcal links');
-  if (/^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.|\[::1\]|172\.(1[6-9]|2\d|3[01])\.)/i.test(u.hostname)) throw new Error('local addresses are not allowed');
+  let cur = new URL(url);
   const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 20000);
   let text;
   try {
-    const r = await fetch(url, { signal: ac.signal, headers: { 'User-Agent': 'L.A.B-Calendar/1.0', Accept: 'text/calendar, text/plain;q=0.8, */*;q=0.5' }, redirect: 'follow' });
+    let r;
+    for (let hops = 0; ; hops++) {                     // follow redirects by hand, checking every hop
+      await assertPublic(cur);
+      r = await fetch(cur, { signal: ac.signal, headers: { 'User-Agent': 'L.A.B-Calendar/1.0', Accept: 'text/calendar, text/plain;q=0.8, */*;q=0.5' }, redirect: 'manual' });
+      const next = r.status >= 300 && r.status < 400 && r.headers.get('location');
+      if (!next) break;
+      if (hops >= 5) throw new Error('too many redirects');
+      cur = new URL(next, cur);
+    }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const len = +r.headers.get('content-length') || 0; if (len > MAX_BYTES) throw new Error('feed too large');
     text = await r.text(); if (text.length > MAX_BYTES) throw new Error('feed too large');

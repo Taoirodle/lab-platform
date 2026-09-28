@@ -7,23 +7,11 @@
 //  food, spending money) is refused honestly — the plumbing exists, but a human
 //  pulls that trigger.
 // ============================================================
-const { spawn } = require('child_process');
+const claude = require('./claude');
 
-const CLAUDE = process.env.LAB_CLAUDE || '/home/tao/.local/bin/claude';
 
-function askClaude(prompt, timeout = 90000) {
-  return new Promise((resolve, reject) => {
-    let child;
-    try { child = spawn(CLAUDE, ['-p', prompt, '--output-format', 'text'], { cwd: '/srv/lab/manager' }); }
-    catch (e) { return reject(e); }
-    let out = '', err = '';
-    const t = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} reject(new Error('timeout')); }, timeout);
-    child.stdout.on('data', d => { out += d; });
-    child.stderr.on('data', d => { err += d; });
-    child.on('error', e => { clearTimeout(t); reject(e); });
-    child.on('close', () => { clearTimeout(t); out.trim() ? resolve(out.trim()) : reject(new Error(err.trim() || 'no output')); });
-  });
-}
+// through the shared queue (claude.js) — a person is waiting on this one
+const askClaude = (prompt, timeout = 90000) => claude.ask(prompt, { timeout });
 function parseJSON(text) {
   const c = text.replace(/```json/gi, '').replace(/```/g, '').trim();
   const s = c.indexOf('{'), e = c.lastIndexOf('}');
@@ -86,13 +74,20 @@ ${convo ? 'Conversation so far:\n' + convo + '\n' : ''}${name || 'They'}: ${Stri
 
 Reply, and act if asked. Return ONLY JSON:
 {"reply":"<what you say, 1-3 sentences, plain>","actions":[ ... ]}`;
+  const signedOut = { reply: "I can't think right now: the server's AI sign-in has run out. Whoever looks after the L.A.B can sign it back in on the server.", actions: [] };
+  let raw;
+  try { raw = await askClaude(prompt); }
+  catch (e) {
+    if (e.code === 'AUTH') return signedOut;
+    return { reply: e.message === 'timeout' ? 'That took me too long. Try asking again, maybe a little simpler.' : "I couldn't get an answer just now. Try me again in a moment.", actions: [] };
+  }
   try {
-    const out = parseJSON(await askClaude(prompt));
+    const out = parseJSON(raw);
     return { reply: String(out.reply || '').replace(/^"|"$/g, '').trim() || 'Done.', actions: Array.isArray(out.actions) ? out.actions.slice(0, 5) : [] };
-  } catch (e) {
-    // Fall back to a plain reply if the JSON contract slips.
+  } catch {
+    // The answer came back but not as JSON: ask once more for plain words, and never act on it.
     try { const r = await askClaude(`${PERSONA}\n${name || 'They'}: ${message}\nReply in 1-2 plain sentences:`); return { reply: r, actions: [] }; }
-    catch { return { reply: "My brain's a bit busy — try me again in a moment.", actions: [] }; }
+    catch (e) { return e.code === 'AUTH' ? signedOut : { reply: "I couldn't get an answer just now. Try me again in a moment.", actions: [] }; }
   }
 }
 

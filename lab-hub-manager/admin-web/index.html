@@ -494,6 +494,7 @@
       + pill(root?grade(root.pct,85,95):null, root?('system disk '+root.pct+'% used'):'system disk —')
       + (lab?pill(grade(lab.pct,85,95),'data disk '+lab.pct+'% used'):'')
       + pill(bk?bk.age_h<30:false, bk?('backup '+(bk.age_h<1?'<1 h':Math.round(bk.age_h)+' h')+' ago · '+Math.round(bk.bytes/1024)+' KB'):'no backup yet')
+      + (h.ai&&h.ai.auth ? pill(h.ai.auth.ok, h.ai.auth.ok===false ? 'AI signed out · run claude on the server to sign back in' : h.ai.auth.ok ? 'AI answering' + (h.ai.waiting?' · '+h.ai.waiting+' waiting':'') : 'AI not asked yet') : '')
       + pill(true,'manager up '+Math.round(h.uptime_s/3600)+' h · '+h.ws_clients+' live screen'+(h.ws_clients===1?'':'s'))
       + pill(true,h.version);
   }

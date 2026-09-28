@@ -11,12 +11,11 @@
 //  goes dark.
 // ============================================================
 const db = require('./db');
-const { spawn } = require('child_process');
+const claude = require('./claude');
 const os = require('os');
 const ledgers = require('./ledgers');
 const builders = require('./builders');
 
-const CLAUDE = process.env.LAB_CLAUDE || '/home/tao/.local/bin/claude';
 
 const CREW = [
   { id: 'nova',  name: 'Nova',  role: 'UX & Accessibility' },
@@ -66,20 +65,8 @@ const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { c
 const clampSig = v => Math.max(1, Math.min(10, Math.round(v) || 3));
 
 // ---- The brain: talk to the Claude Code CLI on this node --------------------
-function askClaude(prompt, timeout = 150000) {
-  return new Promise((resolve, reject) => {
-    let child;
-    try {
-      child = spawn(CLAUDE, ['-p', prompt, '--output-format', 'text'], { cwd: '/srv/lab/manager' });
-    } catch (e) { return reject(e); }
-    let out = '', err = '';
-    const t = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} reject(new Error('claude timeout')); }, timeout);
-    child.stdout.on('data', d => { out += d; });
-    child.stderr.on('data', d => { err += d; });
-    child.on('error', e => { clearTimeout(t); reject(e); });
-    child.on('close', () => { clearTimeout(t); out.trim() ? resolve(out.trim()) : reject(new Error(err.trim() || 'no output')); });
-  });
-}
+// through the shared queue (claude.js) — background work: never takes the last free slot from a person
+const askClaude = (prompt, timeout = 150000) => claude.ask(prompt, { timeout, background: true });
 
 function parseArray(text) {
   const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();

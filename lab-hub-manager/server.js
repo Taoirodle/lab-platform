@@ -26,8 +26,9 @@ const presence = require('./presence');
 const engines = require('./engines');
 const loadshedding = require('./loadshedding');
 const tailscale = require('./tailscale');
+const claude = require('./claude');
 
-const VERSION = 'M-000033';
+const VERSION = 'M-000035';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
@@ -196,7 +197,7 @@ app.get('/api/health/full', wrap(async (req, res) => {
     if (f) { const st = fs.statSync(path.join(dir, f)); backup = { file: f, bytes: st.size, age_h: +((Date.now() - st.mtimeMs) / 3600000).toFixed(1) }; }
   } catch {}
   const disk = (lastStats && lastStats.disk) || null;
-  res.json({ ok: dbOk, version: VERSION, db: dbOk, uptime_s: Math.round(process.uptime()), disk, backup, ws_clients: wss ? wss.clients.size : 0 });
+  res.json({ ok: dbOk, version: VERSION, db: dbOk, uptime_s: Math.round(process.uptime()), disk, backup, ws_clients: wss ? wss.clients.size : 0, ai: claude.stats() });
 }));
 
 // ---- SQL Brain ----

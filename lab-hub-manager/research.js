@@ -6,21 +6,13 @@
 //  on-server brain; live internet-scouring + user-data harvesting is a
 //  deliberate, admin-gated next step (privacy call), not done unsupervised.
 // ============================================================
-const { spawn } = require('child_process');
+const claude = require('./claude');
 const db = require('./db');
 const ledgers = require('./ledgers');
 
-const CLAUDE = process.env.LAB_CLAUDE || '/home/tao/.local/bin/claude';
 
-function askClaude(prompt, timeout = 160000) {
-  return new Promise((resolve, reject) => {
-    let child; try { child = spawn(CLAUDE, ['-p', prompt, '--output-format', 'text'], { cwd: '/srv/lab/manager' }); } catch (e) { return reject(e); }
-    let out = '', err = ''; const t = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} reject(new Error('timeout')); }, timeout);
-    child.stdout.on('data', d => out += d); child.stderr.on('data', d => err += d);
-    child.on('error', e => { clearTimeout(t); reject(e); });
-    child.on('close', () => { clearTimeout(t); out.trim() ? resolve(out.trim()) : reject(new Error(err.trim() || 'no output')); });
-  });
-}
+// through the shared queue (claude.js) — background work: never takes the last free slot from a person
+const askClaude = (prompt, timeout = 160000) => claude.ask(prompt, { timeout, background: true });
 function parseJSON(text) { const c = text.replace(/```json/gi, '').replace(/```/g, '').trim(); const s = c.indexOf('{'), e = c.lastIndexOf('}'); if (s === -1) throw new Error('no json'); return JSON.parse(c.slice(s, e + 1)); }
 
 const TOPICS = [

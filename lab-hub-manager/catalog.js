@@ -60,8 +60,8 @@ function preview(style, accent) {
 
 const APPS = [
   { id: 'sauce', name: 'The Sauce', tagline: 'Your AI, wired into your whole L.A.B', category: 'Assistant', accent: '#b79bff',
-    version: '0.9', size_bytes: 48_400_000, status: 'soon', featured: true, screens: 'chat',
-    desc: 'The Sauce is the AI that runs your world. Ask it anything, hand it real tasks, and let it act across your Hub, your devices, and your server. It learns how you work and quietly gets more useful every day.' },
+    version: '0.9', size_bytes: 48_400_000, status: 'published', featured: true, screens: 'chat',
+    desc: 'The assistant built into your L.A.B. Ask about your day, the calendar and the lists, and hand it real jobs around the house: lights, scenes, to-dos, family events. It will not buy anything or reach outside your home, and it tells you when it can\'t do something.' },
   { id: 'rooms', name: 'Rooms', tagline: 'Control every light and device at home', category: 'Home', accent: '#38d9c4',
     version: '1.0', size_bytes: 12_100_000, status: 'published', screens: 'controls',
     desc: 'One clean panel for the whole house — lights, plugs, and smart devices grouped by room. Tap to toggle, set scenes, and see what is on at a glance. Runs entirely on your own server, no cloud account required.' },
@@ -69,20 +69,20 @@ const APPS = [
     version: '1.0', size_bytes: 9_800_000, status: 'published', screens: 'board',
     desc: 'The whiteboard for your household. A shared calendar, running lists, and chores everyone can see and update. Each family member gets their own lane, and the board stays in sync across every device on your L.A.B.' },
   { id: 'vault', name: 'Vault', tagline: 'Private files and photos, on your server', category: 'Storage', accent: '#6fb4ff',
-    version: '1.0', size_bytes: 15_300_000, status: 'published', screens: 'grid',
-    desc: 'Your own private cloud. Drop in files and photos and reach them from anywhere on your L.A.B — encrypted at rest on the server SSD, never on someone else\'s machine. Automatic backups keep everything safe.' },
+    version: '1.0', size_bytes: 15_300_000, status: 'soon', screens: 'grid',
+    desc: 'Planned: private files and photos kept on your own server and reachable from anywhere on your L.A.B. Not built yet, so nothing is stored by it today.' },
   { id: 'pulse', name: 'Pulse', tagline: 'Live health of all your devices', category: 'System', accent: '#4ade80',
     version: '1.0', size_bytes: 7_200_000, status: 'published', screens: 'dashboard',
     desc: 'A calm, live read-out of your fleet — which devices are online, how the server is holding up, and what the Dev Team just shipped. Pulse turns the Manager\'s telemetry into something anyone in the house can understand.' },
   { id: 'media', name: 'Media', tagline: 'Your home library, streamed anywhere', category: 'Entertainment', accent: '#ff6f9c',
-    version: '0.8', size_bytes: 22_600_000, status: 'published', screens: 'media',
-    desc: 'Every film, show, and track you own, streamed from the server to any screen on your L.A.B. Pick up where you left off, build shared playlists, and keep it all under your own roof.' },
+    version: '0.8', size_bytes: 22_600_000, status: 'soon', screens: 'media',
+    desc: 'Planned: the films, shows and music you own, streamed from the server to any screen at home. Not built yet.' },
   { id: 'notes', name: 'Notes', tagline: 'Fast, private notes that sync', category: 'Productivity', accent: '#9aa4bd',
-    version: '1.0', size_bytes: 4_100_000, status: 'published', screens: 'list',
-    desc: 'Frictionless notes that open instantly and sync across your devices through your server. No accounts, no ads, no cloud — just a fast place to think, kept private on your own L.A.B.' },
+    version: '1.0', size_bytes: 4_100_000, status: 'soon', screens: 'list',
+    desc: 'Planned: quick private notes that sync through your own server. Not built yet; the shared lists on the Hub cover the basics for now.' },
   { id: 'guardian', name: 'Guardian', tagline: 'Network safety and content controls', category: 'Safety', accent: '#ff7a6b',
-    version: '0.9', size_bytes: 11_400_000, status: 'published', screens: 'shield',
-    desc: 'Household-wide safety, powered by the server\'s Pi-Hole. Block ads and trackers, set content boundaries per account, and see a clean summary of what your network is filtering — with the sensitive detail dropped, never stored.' }
+    version: '0.9', size_bytes: 11_400_000, status: 'soon', screens: 'shield',
+    desc: 'Planned: ad and tracker blocking for the whole house and per-person content settings, once a DNS filter (Pi-hole) runs on the server. Not built yet, so nothing on your network is filtered today.' }
 ];
 
 const list = () => APPS.map(a => ({

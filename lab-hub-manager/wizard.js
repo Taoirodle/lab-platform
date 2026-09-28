@@ -8,22 +8,14 @@
 //  The native app pulls this profile on first run — no per-user recompile.
 // ============================================================
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const claude = require('./claude');
 const db = require('./db');
 const ledgers = require('./ledgers');
 
-const CLAUDE = process.env.LAB_CLAUDE || '/home/tao/.local/bin/claude';
 const uid = () => crypto.randomBytes(6).toString('hex');
 
-function askClaude(prompt, timeout = 150000) {
-  return new Promise((resolve, reject) => {
-    let child; try { child = spawn(CLAUDE, ['-p', prompt, '--output-format', 'text'], { cwd: '/srv/lab/manager' }); } catch (e) { return reject(e); }
-    let out = '', err = ''; const t = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} reject(new Error('timeout')); }, timeout);
-    child.stdout.on('data', d => out += d); child.stderr.on('data', d => err += d);
-    child.on('error', e => { clearTimeout(t); reject(e); });
-    child.on('close', () => { clearTimeout(t); out.trim() ? resolve(out.trim()) : reject(new Error(err.trim() || 'no output')); });
-  });
-}
+// through the shared queue (claude.js) — a person is waiting on this one
+const askClaude = (prompt, timeout = 150000) => claude.ask(prompt, { timeout });
 function parseJSON(text) { const c = text.replace(/```json/gi, '').replace(/```/g, '').trim(); const s = c.indexOf('{'), e = c.lastIndexOf('}'); if (s === -1) throw new Error('no json'); return JSON.parse(c.slice(s, e + 1)); }
 
 const MODULES = ['dashboard', 'profile', 'calendar', 'sauce', 'appstore', 'personalized', 'device', 'stats', 'settings'];
