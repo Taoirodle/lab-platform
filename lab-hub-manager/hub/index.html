@@ -430,7 +430,7 @@
     if(!hasBuild){
       const host=location.host;
       $('wz-cmd').textContent = os==='win'
-        ? `# Windows — run in PowerShell:\niwr http://${host}/app/wizard/win -OutFile lab-setup.ps1 ; ./lab-setup.ps1`
+        ? `# Windows — run in PowerShell:\niwr http://${host}/app/wizard/win -OutFile lab-setup.ps1 ; powershell -ExecutionPolicy Bypass -File .\\lab-setup.ps1`
         : `# ${label} — run in a terminal:\ncurl -fsSL http://${host}/app/wizard/${os} -o lab-setup.sh && sh lab-setup.sh`;
     }
     $('wz').classList.add('on');

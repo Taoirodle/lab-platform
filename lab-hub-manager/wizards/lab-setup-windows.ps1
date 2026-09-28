@@ -1,18 +1,18 @@
 # ============================================================
-#  L.A.B — Setup Wizard (Windows)
+#  L.A.B - Setup Wizard (Windows)
 #  Signs you in, quietly reads how you use THIS PC, sends the report to your
 #  L.A.B agents, and shows the personalization they build for your Hub app.
 #  Privacy: it counts file types + installed-app names + basic specs. It never
 #  reads file contents and nothing leaves your home network.
-#  Run:  iwr http://192.168.1.115:8090/app/wizard/win -OutFile lab-setup.ps1 ; ./lab-setup.ps1
+#  Run:  iwr http://192.168.1.115:8090/app/wizard/win -OutFile lab-setup.ps1 ; powershell -ExecutionPolicy Bypass -File .\lab-setup.ps1
 # ============================================================
 param([string]$Server = "http://192.168.1.115:8090")
 $ErrorActionPreference = "Stop"
 function Line { param($c="Gray") process { Write-Host $_ -ForegroundColor $c } }
 
-Write-Host "`n  ┌─ L.A.B SETUP ─────────────────────────────┐" -ForegroundColor Magenta
-Write-Host   "  │  Your home, handled.                       │" -ForegroundColor Magenta
-Write-Host   "  └────────────────────────────────────────────┘`n" -ForegroundColor Magenta
+Write-Host "`n  +- L.A.B SETUP -----------------------------+" -ForegroundColor Magenta
+Write-Host   "  |  Your home, handled.                       |" -ForegroundColor Magenta
+Write-Host   "  +--------------------------------------------+`n" -ForegroundColor Magenta
 
 # 1) account -----------------------------------------------------------------
 $mode = Read-Host "  Do you have an account? (y = sign in / n = create)"
@@ -21,8 +21,14 @@ $pin  = Read-Host "  PIN (4-8 digits)"
 $path = if ($mode -eq 'y') { "/api/accounts/login" } else { "/api/accounts" }
 try {
   $acct = Invoke-RestMethod -Uri "$Server$path" -Method Post -ContentType "application/json" -Body (@{ name=$name; pin=$pin } | ConvertTo-Json)
-  Write-Host "`n  ✓ Signed in as $($acct.name)`n" -ForegroundColor Green
-} catch { Write-Host "  ✗ $($_.ErrorDetails.Message)" -ForegroundColor Red; exit 1 }
+  Write-Host "`n  OK Signed in as $($acct.name)`n" -ForegroundColor Green
+} catch {
+  $why = $_.ErrorDetails.Message
+  try { $why = ($why | ConvertFrom-Json).error } catch {}
+  Write-Host "  X $why" -ForegroundColor Red; exit 1
+}
+# away from home the server wants your sign-in on every call; at home it just rides along
+$auth = @{ Authorization = "Bearer $($acct.session)" }
 
 # 2) analyse this PC ---------------------------------------------------------
 Write-Host "  Reading how you use this machine..." -ForegroundColor Cyan
@@ -59,15 +65,15 @@ $report = @{
   apps = ($apps | Select-Object -First 120)
   fileTypes = $topTypes
 }
-Write-Host "  ✓ Found $($apps.Count) apps, $($fileTypes.Count) file types`n" -ForegroundColor Green
+Write-Host "  OK Found $($apps.Count) apps, $($fileTypes.Count) file types`n" -ForegroundColor Green
 
 # 3) hand it to the agents ---------------------------------------------------
 Write-Host "  Sending to your L.A.B agents..." -ForegroundColor Cyan
 try {
-  $res = Invoke-RestMethod -Uri "$Server/api/wizard/profile" -Method Post -ContentType "application/json" `
+  $res = Invoke-RestMethod -Uri "$Server/api/wizard/profile" -Method Post -ContentType "application/json" -Headers $auth `
          -Body (@{ account_id = $acct.id; report = $report } | ConvertTo-Json -Depth 6)
   $p = $res.personalization
-  Write-Host "`n  ── YOUR PERSONALIZED L.A.B ──────────────────" -ForegroundColor Magenta
+  Write-Host "`n  -- YOUR PERSONALIZED L.A.B ------------------" -ForegroundColor Magenta
   Write-Host "  Archetype : $($p.archetype)"       -ForegroundColor White
   Write-Host "  Your tab  : $($p.personalizedTab)"  -ForegroundColor White
   Write-Host "  Stats     : $($p.statsKind)"        -ForegroundColor White
@@ -76,21 +82,21 @@ try {
   Write-Host "  Profile id: $($res.id)" -ForegroundColor DarkGray
   # leave a note for the app: it reads this on first launch and is personalised + signed in immediately
   $hintDir = Join-Path $env:LOCALAPPDATA "LAB"; New-Item -ItemType Directory -Force -Path $hintDir | Out-Null
-  @{ id = $res.id; account_id = $acct.id; account_name = $acct.name; server = $Server; archetype = $p.archetype; at = (Get-Date).ToString("o") } |
+  @{ id = $res.id; account_id = $acct.id; account_name = $acct.name; server = $Server; session = $acct.session; archetype = $p.archetype; at = (Get-Date).ToString("o") } |
     ConvertTo-Json | Set-Content -Path (Join-Path $hintDir "profile.json") -Encoding UTF8
-} catch { Write-Host "  ✗ Could not reach the agents: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
+} catch { Write-Host "  X Could not reach the agents: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
 
 # 4) fetch the app (once CI has published a build) ---------------------------
 Write-Host "  Checking for your app build..." -ForegroundColor Cyan
 try {
   $out = Join-Path $env:USERPROFILE "Downloads\L.A.B-Hub-Setup.exe"
   Invoke-WebRequest -Uri "$Server/app/download/win" -OutFile $out -ErrorAction Stop
-  Write-Host "  ✓ Downloaded to $out" -ForegroundColor Green
+  Write-Host "  OK Downloaded to $out" -ForegroundColor Green
   $go = Read-Host "  Run the installer now? [Y/n]"
-  if ($go -eq '' -or $go -match '^[Yy]') { Start-Process -FilePath $out; Write-Host "  Installer opened — the app signs you in on first launch.`n" -ForegroundColor Green }
-  else { Write-Host "  Run it whenever you like — it's in your Downloads.`n" -ForegroundColor Yellow }
+  if ($go -eq '' -or $go -match '^[Yy]') { Start-Process -FilePath $out; Write-Host "  Installer opened - the app signs you in on first launch.`n" -ForegroundColor Green }
+  else { Write-Host "  Run it whenever you like - it's in your Downloads.`n" -ForegroundColor Yellow }
 } catch {
-  Write-Host "  · The native Windows build isn't published yet." -ForegroundColor Yellow
-  Write-Host "    Your profile is saved — the app will pick it up the moment it lands.`n" -ForegroundColor Yellow
+  Write-Host "  - The native Windows build isn't published yet." -ForegroundColor Yellow
+  Write-Host "    Your profile is saved - the app will pick it up the moment it lands.`n" -ForegroundColor Yellow
 }
 Write-Host "  Done. Welcome to the L.A.B.`n" -ForegroundColor Magenta
