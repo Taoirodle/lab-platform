@@ -22,10 +22,11 @@ The **off-network guard** in `server.js` enforces that by *address*:
 
 - **Home** means a private LAN address (10/8, 172.16/12, 192.168/16, link-local) or the box itself, talking to the Manager directly.
 - **Everything else is off-network**: a Tailscale device (100.64.0.0/10, fd7a:115c:a1e0::/48), anything that came through a proxy (`X-Forwarded-For`, Cloudflare's `cf-*` headers, Tailscale Serve's identity headers), any public address.
-- Off-network callers get the **family surface only**: the Hub, shared lists and calendar, the Sauce, the store, the kiosk, and listing/running scenes.
+- Off-network callers get the **family surface only**: the Hub, shared lists and calendar, the Sauce, the store, the kiosk, and listing/running scenes — and since 1.8, **only with a family sign-in**. A tailnet can hold devices that aren't family (work machines, a friend's laptop), so away from home every family API call carries a session (`Authorization: Bearer`, from `POST /api/accounts/login`); account-scoped calls must be about the signed-in account; sign-up is home-only (family join by invite); phone calendar subscriptions use a separate read-only feed key.
 - The Manager dashboard `/`, `/admin`, `/install`, `/showcase` and every control API (settings, dev team, ledgers, Conductor config, fleet, audit, house, engines, tailscale…) return **403** off-network unless valid admin key headers are sent.
+- **At home too**, the admin tier needs the Admin Portal's session (unlock with the USB key file). Only the box itself is exempt — which is what makes the SSH tunnel below work.
 
-Deciding by address rather than by the absence of a header means any new way in starts locked. `scripts/smoke.sh` checks this every run, by sending proxied requests and expecting 403 on the control plane.
+Deciding by address rather than by the absence of a header means any new way in starts locked. `scripts/smoke.sh` checks all of this every run: proxied requests must get 403 on the control plane and 401 on family calls without a sign-in, and LAN requests must get 401 on admin calls without the key.
 
 ## Tailscale: how it is set up
 
@@ -77,6 +78,7 @@ Going live then needs a domain on Cloudflare, `cloudflared tunnel login` (run it
 
 - [x] Off-network guard decides by address; Tailscale and proxied traffic see the family surface only (M-000029)
 - [x] Tailscale installed on lab-main-01; operator `tao`; Admin → Off-site access panel
-- [ ] Server signed in to Tailscale (needs Tao)
-- [ ] Shared with family; key expiry off; SSH key-only (needs Tao)
-- [ ] Cloudflare Tunnel: staged only, see the four items above before ever enabling it
+- [x] Server signed in to Tailscale; SSH key-only (2026-09-28)
+- [x] Family sign-in required away from home; admin key required for the control plane at home (V1.8, M-000032/33)
+- [ ] Shared with family; key expiry off (needs Tao)
+- [ ] Cloudflare Tunnel: staged only, see the four items above before ever enabling it (sessions now cover item 1's worry about an open family surface, but Access is still the right front door for a public hostname)

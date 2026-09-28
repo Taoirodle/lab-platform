@@ -1,9 +1,11 @@
-// L.A.B Admin Portal — Electron shell. A real app (not a browser tab) that
-// connects to the L.A.B Hub Manager over the LAN. First build: the control
-// surface (Approvals, AI controls, Fleet). USB-key + installer come in the
-// hardening pass.
+// L.A.B Admin Portal — Electron shell. A desktop window onto the Admin Portal
+// the Manager serves at /admin/ — the same key-gated page as in a browser, so
+// there's one Portal to keep current (this used to carry its own copy, which
+// fell behind and couldn't unlock the admin tier).
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
+
+const MANAGER = process.env.LAB_MANAGER_URL || 'http://192.168.1.115:8090';
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -14,12 +16,11 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false,
-      webSecurity: false            // trusted local admin app talking to the LAN Manager
+      nodeIntegration: false
     }
   });
   win.setMenuBarVisibility(false);
-  win.loadFile(path.join(__dirname, 'public', 'index.html'));
+  win.loadURL(MANAGER + '/admin/');
 }
 
 app.whenReady().then(createWindow);
