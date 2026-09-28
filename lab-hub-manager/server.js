@@ -27,12 +27,22 @@ const engines = require('./engines');
 const loadshedding = require('./loadshedding');
 const tailscale = require('./tailscale');
 
-const VERSION = 'M-000030';
+const VERSION = 'M-000031';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
 const app = express();
 app.use(express.json());
+// CORS — the native app (a webview with its own origin) calls the Manager. This
+// runs before the guard so a refusal still carries the headers: without them the
+// webview can't read the 403 and mistakes "home only" for "server is down".
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Lab-Token, X-Lab-Key');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 
 // ---- Off-network guard -------------------------------------------------------
 // Home is the LAN: a private address talking to us directly. Everything else is
@@ -56,7 +66,7 @@ function isHomeIP(ip) {
 }
 const offNetwork = req => viaProxy(req) || !isHomeIP(peerIP(req));
 const SENSITIVE = [
-  /^\/$/, /^\/admin(\/|$)/, /^\/install(\/|$)/, /^\/showcase(\/|$)/,
+  /^\/(index\.html)?$/, /^\/admin(\/|$)/, /^\/install(\/|$)/, /^\/showcase(\/|$)/,
   /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/devices|app\/sync|audit|house|engines|tailscale)/
 ];
 // The two Conductor calls the Hub's House tab makes. Running a scene is the same
@@ -78,14 +88,6 @@ app.use(async (req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public'), { setHeaders: r => r.setHeader('Cache-Control', 'no-cache') }));
 const wrap = fn => (req, res) => Promise.resolve(fn(req, res)).catch(e => { console.error(e.message); if (!res.headersSent) res.status(500).json({ error: e.message }); });
-// CORS — the Admin Portal (Electron app) reaches the Manager over the LAN
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
-  next();
-});
 const clamp = (v, def) => (typeof v === 'number' ? Math.max(1, Math.min(10, Math.round(v))) : def);
 // Live updates: any successful change to shared things is announced over /ws as
 // {type:'shared', what} so every open app / hub / kiosk refreshes at once.
@@ -740,10 +742,30 @@ app.post('/api/presence/sweep', wrap(async (req, res) => res.json(await presence
 
 app.get('/api/loadshedding', wrap(async (req, res) => res.json(loadshedding.current())));
 app.post('/api/loadshedding/refresh', wrap(async (req, res) => { await loadshedding.pollStage(); await loadshedding.pollArea(); res.json(loadshedding.current()); }));
-app.get('/api/loadshedding/areas', wrap(async (req, res) => {
-  if (!req.query.q) return res.status(400).json({ error: 'q required' });
-  try { res.json({ areas: await loadshedding.findArea(String(req.query.q)) }); }
+// The area schedule needs an EskomSePush token (free, personal). Set from Admin;
+// the token is never sent back out, only whether one is saved. Under /settings,
+// so it is home-network only like every other setting.
+app.get('/api/settings/loadshedding', wrap(async (req, res) => {
+  const [tok, id, name] = await Promise.all(['sepush_token', 'sepush_area_id', 'sepush_area_name'].map(k => db.settings.get(k, null)));
+  res.json({ has_token: !!tok, area_id: id, area_name: name, area: loadshedding.current().area });
+}));
+app.get('/api/settings/loadshedding/areas', wrap(async (req, res) => {
+  if (!req.query.q) return res.status(400).json({ error: 'Type part of your suburb or area.' });
+  try { res.json({ areas: await loadshedding.findArea(String(req.query.q).slice(0, 80)) }); }
   catch (e) { res.status(400).json({ error: e.message }); }
+}));
+app.post('/api/settings/loadshedding', wrap(async (req, res) => {
+  const b = req.body || {};
+  if (b.clear) { for (const k of ['sepush_token', 'sepush_area_id', 'sepush_area_name']) await db.settings.set(k, null); }
+  if (typeof b.token === 'string' && b.token.trim()) await db.settings.set('sepush_token', b.token.trim().slice(0, 200));
+  if (typeof b.area_id === 'string' && b.area_id.trim()) {
+    await db.settings.set('sepush_area_id', b.area_id.trim().slice(0, 120));
+    await db.settings.set('sepush_area_name', String(b.area_name || '').slice(0, 120) || null);
+  }
+  db.audit('admin', 'loadshedding.settings', { token: !!b.token, area: b.area_id || null, clear: !!b.clear });
+  await loadshedding.pollArea().catch(() => {});
+  const [tok, id, name] = await Promise.all(['sepush_token', 'sepush_area_id', 'sepush_area_name'].map(k => db.settings.get(k, null)));
+  res.json({ has_token: !!tok, area_id: id, area_name: name, area: loadshedding.current().area });
 }));
 
 app.get('/api/live/sources', (req, res) => res.json(Object.keys(LIVE)));
@@ -1093,7 +1115,11 @@ app.get('/admin/*', (req, res) => res.sendFile(path.join(__dirname, 'admin-web',
 app.use('/kiosk', express.static(path.join(__dirname, 'kiosk'), { setHeaders: r => r.setHeader('Cache-Control', 'no-cache') }));
 app.get('/kiosk/*', (req, res) => res.sendFile(path.join(__dirname, 'kiosk', 'index.html')));
 
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+// An API path nobody handles is a JSON 404, not the dashboard page. And the
+// dashboard is the fallback only at home — outside the house an unknown path is
+// simply not found.
+app.all('/api/*', (req, res) => res.status(404).json({ error: 'No such endpoint.' }));
+app.get('*', (req, res) => (offNetwork(req) ? res.status(404).send('Not found.') : res.sendFile(path.join(__dirname, 'public', 'index.html'))));
 
 const START = Date.now();
 const server = http.createServer(app);

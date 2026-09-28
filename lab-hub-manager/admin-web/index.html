@@ -256,6 +256,8 @@
       <div class="card" id="fleet"><div class="empty">Loading…</div></div>
       <div class="lbl">Health</div>
       <div class="card" id="health"><div class="empty">Loading…</div></div>
+      <div class="lbl">Load-shedding <span class="hint">national stage · your area's schedule</span></div>
+      <div class="card" id="ls"><div class="empty">Loading…</div></div>
       <div class="lbl">Hub app · devices</div>
       <div class="card" id="hubdev"><div class="empty">Loading…</div></div>
       <div class="lbl">Builders · generations</div>
@@ -494,6 +496,35 @@
       + pill(true,'manager up '+Math.round(h.uptime_s/3600)+' h · '+h.ws_clients+' live screen'+(h.ws_clients===1?'':'s'))
       + pill(true,h.version);
   }
+  // Load-shedding: the national stage needs nothing; "when does OUR power go off"
+  // needs a free EskomSePush token, typed here and never shown again.
+  const field = 'flex:1;font:inherit;padding:8px 10px;border:1px solid var(--line2);border-radius:2px';
+  async function loadLS(msg){
+    const [s, now] = await Promise.all([api('/api/settings/loadshedding').catch(()=>null), api('/api/loadshedding').catch(()=>null)]);
+    if(!s || s.error){ $('ls').innerHTML='<div class="empty">Could not read the load-shedding settings.</div>'; return; }
+    const stage = now && now.stage!=null ? (now.stage>0?'Stage '+now.stage:'No load-shedding') : 'No reading yet';
+    const area = s.area_name || s.area_id, a = s.area || {};
+    const next = a.next ? new Date(a.next.start).toLocaleString([], {weekday:'short',hour:'2-digit',minute:'2-digit'}) : null;
+    const areaNote = !s.has_token ? 'needs an EskomSePush token' : !area ? 'search for your area below' : a.error ? a.error : next ? 'next slot '+next : 'no slots coming up';
+    $('ls').innerHTML = `<div class="dev"><div><b>${esc(stage)}</b> <span style="color:var(--ink3);font-size:12px">· national, straight from Eskom${now&&now.stale?' · reading is old':''}</span></div></div>
+      <div class="dev"><div><b>${esc(area||'No area set')}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(areaNote)}</span></div></div>
+      <form id="ls-tok" style="display:flex;gap:8px;margin-top:12px"><input type="password" id="ls-t" autocomplete="off" placeholder="${s.has_token?'Token saved · paste a new one to replace it':'Your EskomSePush API token'}" style="${field}"><button class="btn">Save</button></form>
+      ${s.has_token?`<form id="ls-find" style="display:flex;gap:8px;margin-top:8px"><input id="ls-q" placeholder="Your suburb or area" style="${field}"><button class="btn">Find</button></form><div id="ls-res"></div>`:''}
+      <div id="ls-msg" style="font-size:12px;color:var(--ink2);margin-top:8px">${esc(msg||'')}</div>`;
+    $('ls-tok').onsubmit = async e => { e.preventDefault(); const t=$('ls-t').value.trim(); if(!t) return;
+      const r = await api('/api/settings/loadshedding',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})}).catch(()=>({error:'failed'}));
+      loadLS(r.error ? 'Could not save: '+r.error : 'Token saved. Now find your area.'); };
+    const f=$('ls-find'); if(f) f.onsubmit = async e => { e.preventDefault(); const q=$('ls-q').value.trim(); if(!q) return;
+      $('ls-msg').textContent='Searching…';
+      const r = await api('/api/settings/loadshedding/areas?q='+encodeURIComponent(q)).catch(()=>({error:'Could not reach the Manager.'}));
+      if(r.error){ $('ls-msg').textContent=r.error; return; }
+      $('ls-msg').textContent = r.areas.length ? 'Pick yours:' : 'Nothing matched. Try a nearby suburb.';
+      $('ls-res').innerHTML = r.areas.slice(0,8).map(x=>`<div class="dev" data-area="${attr(x.id)}" data-name="${attr(x.name)}" style="cursor:pointer"><div><b>${esc(x.name)}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(x.region||'')}</span></div><span class="st online">Use</span></div>`).join('');
+      $('ls-res').querySelectorAll('[data-area]').forEach(d=>d.onclick=async()=>{
+        const r2 = await api('/api/settings/loadshedding',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({area_id:d.dataset.area,area_name:d.dataset.name})}).catch(()=>({error:'failed'}));
+        loadLS(r2.error ? 'Could not save: '+r2.error : 'Area set. The wall display and live cards now show your slots.'); });
+    };
+  }
   async function loadFamily(){
     const list = await api('/api/accounts').catch(()=>[]);
     $('family').innerHTML = (list.length ? list.map(a=>`<div class="dev"><div><b>${esc(a.name)}</b> <span style="color:var(--ink3);font-size:12px">· ${esc(a.role||'member')} · since ${new Date(a.created_at).toLocaleDateString()}</span></div><span style="font-size:18px">${a.avatar&&a.avatar.emoji?esc(a.avatar.emoji):''}</span></div>`).join('') : '<div class="empty">No accounts yet.</div>')
@@ -713,6 +744,7 @@
     loadAudit(); setInterval(loadAudit, 20000);
     loadFamily();
     loadHealth(); setInterval(loadHealth, 30000);
+    loadLS();
     setInterval(()=>{ loadApprovals(); loadFleet(); }, 5000);
     setInterval(loadHubDevices, 30000);
     setInterval(()=>{ loadAnalytics(false); }, 20000);
