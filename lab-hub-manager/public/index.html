@@ -246,7 +246,7 @@
 
   fetch('/api/identity').then(r=>r.json()).then(d=>{
     $('node-id').innerHTML=`<b>${d.node}</b> · ${d.ip}`;
-    $('foot').textContent=`L.A.B HUB MANAGER · ${d.node} · ${d.version}`;
+    $('foot').textContent=`L.A.B HUB MANAGER · ${d.node} · ${d.release ? 'V' + d.release + ' · ' : ''}${d.version}`;
     document.title=`${d.node} · L.A.B Manager`;
   }).catch(()=>{});
   fetch('/api/admin/list').then(r=>r.json()).then(a=>{ $('admin-count').textContent=`${a.filter(x=>x.paired).length} Paired`; }).catch(()=>{});

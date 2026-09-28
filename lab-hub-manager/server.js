@@ -28,7 +28,8 @@ const loadshedding = require('./loadshedding');
 const tailscale = require('./tailscale');
 const claude = require('./claude');
 
-const VERSION = 'M-000035';
+const VERSION = 'M-000036';
+const RELEASE = '1.8';              // the platform release people see; VERSION is the Manager build
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
@@ -181,13 +182,13 @@ async function collectStats() {
 }
 
 app.get('/api/identity', (req, res) => res.json({
-  app: 'L.A.B Hub Manager', version: VERSION, node: os.hostname(), kind: 'Main Server',
+  app: 'L.A.B Hub Manager', version: VERSION, release: RELEASE, node: os.hostname(), kind: 'Main Server',
   ip: lanIP(), platform: `${os.type()} ${os.release()}`, cpuModel: (os.cpus()[0] || {}).model || 'unknown',
   cores: os.cpus().length, totalMem: os.totalmem(), dataRoot: DATA_ROOT, started: START,
   away: tailscale.address(PORT)          // the Hub's Tailscale address, once off-site access is on
 }));
 app.get('/api/stats', async (req, res) => res.json(lastStats || await collectStats()));
-app.get('/api/health', (req, res) => res.json({ ok: true, version: VERSION }));
+app.get('/api/health', (req, res) => res.json({ ok: true, version: VERSION, release: RELEASE }));
 // the fuller picture for Admin: database, disk on the data volume, age of the last backup
 app.get('/api/health/full', wrap(async (req, res) => {
   const fs = require('fs');

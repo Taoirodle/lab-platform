@@ -36,6 +36,14 @@
   .btn:hover{background:var(--panel2)}
   .btn.pri{border:0;background:linear-gradient(135deg,var(--a1),var(--a2));color:#0a0c14;font-weight:700}
   .card{background:var(--panel);border:1px solid var(--stroke);border-radius:20px;padding:22px;backdrop-filter:var(--glass)}
+  /* builders' cards: rendered by fixed templates, never their own markup */
+  .hcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:10px}
+  .hcard{border:1px solid var(--stroke);border-radius:14px;padding:14px;background:var(--panel2);min-width:0}
+  .hcard .t{font-weight:700;margin-bottom:8px}
+  .hcard .big{font-size:26px;font-weight:700;line-height:1.1}
+  .hcard .m{color:var(--txt2);font-size:13px;line-height:1.5}
+  .hcard label{display:flex;gap:8px;align-items:flex-start;font-size:13px;margin:6px 0}
+  .hpick{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--stroke);font-size:13px}
   .card h3{font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--txt2);font-weight:600;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
   .grid{display:grid;gap:16px;margin-top:20px}
   .g2{grid-template-columns:1.1fr .9fr}
@@ -206,6 +214,11 @@
         <h3>This week <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">who chose to share</span></h3>
         <div class="list" id="fam-stats"></div>
       </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h3>Cards <span style="color:var(--txt2);font-weight:400;letter-spacing:0;text-transform:none">made by your L.A.B's builders</span><a id="hc-pick" style="float:right;font-size:12px;color:var(--a1);cursor:pointer;text-transform:none;letter-spacing:0">Choose</a></h3>
+      <div id="hc-picker" hidden></div>
+      <div class="hcards" id="hc-list"></div>
     </div>
   </div>
 
@@ -454,6 +467,36 @@
   }
   try{const sv=store.get('skinvars');if(sv)applySkin(sv);}catch{}
 
+  // ---- cards from the builders (#842). Their payloads are data, drawn by the four
+  // fixed templates below; nothing they wrote is ever put on the page as HTML.
+  // Live cards read the house (the server resolves the numbers), so they're the default.
+  async function loadCards(){
+    let g; try{ g=await api('/api/hub/generations'); }catch{ return; }
+    const all=g.widgets||[], chosen=store.get('hubcards')||all.filter(w=>w.payload&&w.payload.template==='live').map(w=>w.id);
+    const cards=all.filter(w=>chosen.includes(w.id));
+    $('hc-list').innerHTML=cards.length?cards.map(w=>`<div class="hcard" data-w="${esc(w.id)}"><div class="t">${esc(w.title||w.name)}</div><div class="b"></div></div>`).join('')
+      :'<div class="empty">No cards chosen yet. Tap Choose to pick some.</div>';
+    cards.forEach(w=>drawCard(w,$('hc-list').querySelector(`[data-w="${w.id}"] .b`)));
+    $('hc-pick').onclick=()=>{ const p=$('hc-picker'); p.hidden=!p.hidden; if(p.hidden) return;
+      p.innerHTML=all.map(w=>`<label class="hpick"><span><b>${esc(w.title||w.name)}</b> <span style="color:var(--txt2)">${esc((w.payload&&w.payload.template)||'')}</span></span><input type="checkbox" data-pick="${esc(w.id)}" ${chosen.includes(w.id)?'checked':''}></label>`).join('')||'<div class="empty">The builders haven\'t published any cards yet.</div>';
+      p.querySelectorAll('[data-pick]').forEach(c=>c.onchange=()=>{ const s=new Set(store.get('hubcards')||chosen); c.checked?s.add(c.dataset.pick):s.delete(c.dataset.pick); store.set('hubcards',[...s]); loadCards().then(()=>{ $('hc-picker').hidden=false; }); }); };
+  }
+  function drawCard(w,el){
+    const p=w.payload||{}, items=(p.items||[]).map(String).slice(0,8), accent=/^#[0-9a-f]{3,8}$/i.test(p.accent||'')?p.accent:'';
+    if(p.template==='live'){
+      el.innerHTML='<div class="m">…</div>';
+      api('/api/live/'+encodeURIComponent(p.source)+'?tz='+encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC')).then(d=>{
+        el.innerHTML=`<div class="big"${accent?` style="color:${accent}"`:''}>${esc(d.value)}</div><div class="m">${esc(d.label||'')}${d.sub?' · '+esc(d.sub):''}</div>`
+          +((d.items||[]).length?`<div class="m" style="margin-top:6px">${d.items.slice(0,5).map(esc).join('<br>')}</div>`:''); }).catch(()=>{ el.innerHTML='<div class="m">Could not read that right now.</div>'; });
+      return;
+    }
+    if(p.template==='checklist'){ const k='wcheck_'+w.id, done=new Set(store.get(k)||[]);
+      el.innerHTML=items.map((t,i)=>`<label><input type="checkbox" data-i="${i}" ${done.has(i)?'checked':''}><span>${esc(t)}</span></label>`).join('');
+      el.querySelectorAll('input').forEach(c=>c.onchange=()=>{ const i=+c.dataset.i; c.checked?done.add(i):done.delete(i); store.set(k,[...done]); }); return; }
+    if(p.template==='focus'){ el.innerHTML=`<div class="m" style="color:var(--txt);font-size:15px;border-left:3px solid ${accent||'var(--a1)'};padding-left:10px">${esc(items[0]||p.summary||'')}</div>`+items.slice(1,4).map(t=>`<div class="m" style="margin-top:6px">${esc(t)}</div>`).join(''); return; }
+    el.innerHTML=`<div class="m">${esc(items[0]||p.summary||'')}</div>`;
+  }
+
   // ---- start ----
   let started=false;
   async function start(){
@@ -462,9 +505,9 @@
     $('greet').textContent=`Hi ${me.name}`;
     $('s-acct').textContent=me.name;
     tick(); setInterval(tick,1000);
-    try{const id=await api('/api/identity'); $('hosted').textContent='hosted by '+id.node; $('s-node').textContent=id.node; $('foot').textContent='L.A.B Hub · shared family surface · from '+id.node;
+    try{const id=await api('/api/identity'); $('hosted').textContent='hosted by '+id.node; $('s-node').textContent=id.node; $('foot').textContent='L.A.B Hub '+(id.release?'V'+id.release+' ':'')+'· shared family surface · from '+id.node;
       if(id.away){ $('s-away').innerHTML='With Tailscale on, open <b>'+esc(id.away.url)+'</b>'; $('s-away-st').textContent='On'; $('s-away-st').style.color='var(--ok)'; }}catch{}
-    loadTodos(); loadEvents(); loadFamilyStats(); loadFeeds(); loadTargets(); loadSkins();
+    loadTodos(); loadEvents(); loadFamilyStats(); loadFeeds(); loadTargets(); loadSkins(); loadCards();
     if(!away) $('ics-url').textContent=location.origin+'/api/calendar/family.ics';
     else { // away: the subscription needs its own read-only key, made only when asked for (a new one retires the old)
       $('ics-url').innerHTML='<button class="btn" id="ics-make" style="padding:4px 10px">Make a link for my phone</button>';
@@ -475,7 +518,7 @@
     (function live(){ let ws; const s=store.get('session'); try{ ws=new WebSocket(location.origin.replace(/^http/,'ws')+'/ws'+(s?'?s='+encodeURIComponent(s):'')); }catch{ return setTimeout(live,10000); }
       ws.onmessage=e=>{ let m; try{ m=JSON.parse(e.data); }catch{ return; } if(m.type!=='shared') return;
         const a=document.activeElement; if(a&&a.tagName==='INPUT'&&a.value) return;
-        if(m.what==='todos'||m.what==='sauce') loadTodos();
+        if(m.what==='todos'||m.what==='sauce'){ loadTodos(); loadCards(); }
         if(m.what==='events'||m.what==='calendar'||m.what==='sauce') loadEvents();
         if(m.what==='conductor'||m.what==='kiosk'||m.what==='sauce') { if(typeof loadHouse==='function') loadHouse(); } };
       ws.onclose=()=>setTimeout(live,5000); })();

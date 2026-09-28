@@ -312,7 +312,7 @@
     try{
       const id = await api('/api/identity');
       const me = await api('/api/admin/whoami');
-      $('conn').classList.add('ok'); $('conn').querySelector('span').textContent = 'Connected · ' + id.node;
+      $('conn').classList.add('ok'); $('conn').querySelector('span').textContent = 'Connected · ' + id.node + (id.release ? ' · V' + id.release : '');
       $('who').innerHTML = me.recognised ? `<b>${esc(me.name)}</b> · ${esc(me.role)}` : 'Administrator (unverified PC)';
       await Promise.all([loadAnalytics(true), loadApprovals(), loadAI(), loadFleet()]);
     }catch(e){
@@ -546,7 +546,7 @@
   // domain server-side means adding one line here, nothing else.
   const H_COLS = {
     assets:    ['name','kind','ip','room','status'],
-    bills:     ['label','category','amount','cadence','due_day'],
+    bills:     ['label','for','category','amount','cadence','due_day'],
     debts:     ['label','kind','balance','rate_pct','min_payment'],
     contacts:  ['name','role','phone'],
     providers: ['name','kind','phone'],
@@ -565,10 +565,14 @@
   const money = v => v==null||v===''?'—':'R'+Number(v).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
 
   async function loadHouse(){
-    const [sum, rows] = await Promise.all([
+    const [sum, rows, accts, provs] = await Promise.all([
       api('/api/house/summary').catch(()=>null),
-      api('/api/house/'+hTab).catch(()=>[])
+      api('/api/house/'+hTab).catch(()=>[]),
+      hTab==='bills' ? api('/api/accounts').catch(()=>[]) : [],
+      hTab==='bills' ? api('/api/house/providers').catch(()=>[]) : []
     ]);
+    // a bill is the whole house's, or one person's — that's what makes per-person money possible (#41)
+    if (hTab==='bills' && Array.isArray(rows)) { const who={}; accts.forEach(a=>who[a.id]=a.name); rows.forEach(r=>{ r.for = r.whole_house===false ? (who[r.account_id]||'one person') : 'house'; }); }
     if (sum) {
       const m = sum.money, c = sum.counts;
       $('h-sum').innerHTML =
@@ -593,9 +597,13 @@
       }${c==='name'&&r.confirmed===false?' <em style="color:var(--ink3);font-style:normal;font-size:11px">unconfirmed</em>':''}</span>`).join('')
     }</div><span style="width:60px;text-align:right"><span data-hdel="${r.id}" style="cursor:pointer;color:var(--ink3);font-size:11px;text-transform:uppercase;letter-spacing:1px">Remove</span></span></div>`).join('')
       : '<div class="empty">Nothing here yet.</div>';
+    const fs2 = 'flex:1;min-width:110px;font:inherit;padding:8px 10px;border:1px solid var(--line2);border-radius:2px';
+    const billExtra = hTab==='bills'
+      ? `<select name="owner" style="${fs2}"><option value="house">Whole house</option>${accts.map(a=>`<option value="${attr(a.id)}">${esc(a.name)}</option>`).join('')}</select>`
+        + `<select name="provider_id" style="${fs2}"><option value="">No provider</option>${provs.map(p=>`<option value="${attr(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : '';
     const add = `<form id="h-add" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:center">${
-      H_ADD[hTab].map(([k,ph])=>`<input name="${k}" placeholder="${ph}" style="flex:1;min-width:110px;font:inherit;padding:8px 10px;border:1px solid var(--line2);border-radius:2px">`).join('')
-    }<button class="btn">Add</button></form><div class="empty" id="h-msg" style="padding-top:6px"></div>`;
+      H_ADD[hTab].map(([k,ph])=>`<input name="${k}" placeholder="${ph}" style="${fs2}">`).join('')
+    }${billExtra}<button class="btn">Add</button></form><div class="empty" id="h-msg" style="padding-top:6px"></div>`;
     $('h-body').innerHTML = head + body + add;
     $('h-body').querySelectorAll('[data-hdel]').forEach(b=>b.onclick=async()=>{
       await fetch('/api/house/'+hTab+'/'+b.dataset.hdel,{method:'DELETE'}); loadHouse();
@@ -604,6 +612,7 @@
       e.preventDefault();
       const d = { added_by:'admin' };
       new FormData(e.target).forEach((v,k)=>{ if(String(v).trim()) d[k]=String(v).trim(); });
+      if (d.owner) { if (d.owner==='house') d.whole_house = true; else { d.whole_house = false; d.account_id = d.owner; } delete d.owner; }
       const r = await fetch('/api/house/'+hTab,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(r=>r.json()).catch(()=>({error:'failed'}));
       if (r.error) { $('h-msg').textContent = r.error; return; }
       loadHouse();
