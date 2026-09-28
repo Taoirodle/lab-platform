@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   role TEXT NOT NULL DEFAULT 'member',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-ALTER TABLE accounts ADD COLUMN IF NOT EXISTS pin TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS pin TEXT;         -- pre-V1.8 plain PINs; emptied by init() once hashed
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS pin_hash TEXT;    -- s1$<salt>$<scrypt>, see hashPin()
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS avatar JSONB;    -- {emoji, color}
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS privacy JSONB;   -- {share_stats, share_calendar}
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS prefs JSONB;     -- app prefs synced across your installs: {widgets, look, skin, skinvars, updated_at}
@@ -329,8 +330,28 @@ INSERT INTO settings(key,value) VALUES ('ai', '{"activity":5,"aggressiveness":5,
 `;
 
 let ready = false;
+// PINs are short, so they are stored the way passwords should be: scrypt with a
+// per-account salt, compared in constant time. Hashing is what makes a leaked
+// database (or a stray backup) not hand over everyone's PIN.
+const SCRYPT = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
+const scrypt = (pin, salt) => new Promise((res, rej) => crypto.scrypt(String(pin), salt, 32, SCRYPT, (e, k) => (e ? rej(e) : res(k))));
+async function hashPin(pin) {
+  const salt = crypto.randomBytes(16);
+  return 's1$' + salt.toString('base64') + '$' + (await scrypt(pin, salt)).toString('base64');
+}
+async function pinMatches(stored, pin) {
+  const [v, s, h] = String(stored || '').split('$');
+  if (v !== 's1' || !s || !h) return false;
+  const want = Buffer.from(h, 'base64'), got = await scrypt(pin, Buffer.from(s, 'base64'));
+  return want.length === got.length && crypto.timingSafeEqual(want, got);
+}
+
 async function init() {
   await pool.query(SCHEMA);
+  // one-time: hash any PIN still stored in the clear, then forget the clear one
+  const plain = await pool.query('SELECT id, pin FROM accounts WHERE pin IS NOT NULL AND pin_hash IS NULL');
+  for (const r of plain.rows) await pool.query('UPDATE accounts SET pin_hash=$2, pin=NULL WHERE id=$1', [r.id, await hashPin(r.pin)]);
+  if (plain.rowCount) console.log(`PINs: hashed ${plain.rowCount} stored in the clear.`);
   ready = true;
   return true;
 }
@@ -426,15 +447,22 @@ const analytics = {
 // Family accounts (the people who use the Home L.A.B Hub)
 const accounts = {
   list: () => pool.query('SELECT id,name,role,avatar,created_at FROM accounts ORDER BY created_at').then(r => r.rows),
-  create: (name, pin) => pool.query('INSERT INTO accounts(name,role,pin) VALUES($1,$2,$3) RETURNING id,name,role,avatar,privacy', [name, 'member', pin]).then(r => r.rows[0]),
-  login: (name, pin) => pool.query('SELECT id,name,role,avatar,privacy FROM accounts WHERE lower(name)=lower($1) AND pin=$2', [name, pin]).then(r => r.rows[0] || null),
+  create: async (name, pin) => pool.query('INSERT INTO accounts(name,role,pin_hash) VALUES($1,$2,$3) RETURNING id,name,role,avatar,privacy', [name, 'member', await hashPin(pin)]).then(r => r.rows[0]),
+  login: async (name, pin) => {
+    const a = (await pool.query('SELECT id,name,role,avatar,privacy,pin_hash FROM accounts WHERE lower(name)=lower($1)', [name])).rows[0];
+    if (!a || !(await pinMatches(a.pin_hash, pin))) return null;
+    delete a.pin_hash; return a;
+  },
   exists: (name) => pool.query('SELECT 1 FROM accounts WHERE lower(name)=lower($1)', [name]).then(r => r.rowCount > 0),
   get: (id) => pool.query('SELECT id,name,role,avatar,privacy,created_at FROM accounts WHERE id=$1', [id]).then(r => r.rows[0] || null),
-  checkPin: (id, pin) => pool.query('SELECT 1 FROM accounts WHERE id=$1 AND pin=$2', [id, pin]).then(r => r.rowCount > 0),
+  checkPin: async (id, pin) => {
+    const a = (await pool.query('SELECT pin_hash FROM accounts WHERE id=$1', [id])).rows[0];
+    return !!a && pinMatches(a.pin_hash, pin);
+  },
   // profile edits: avatar {emoji,color}, privacy {share_stats, share_calendar}; PIN change needs the old PIN (checked by the route)
-  update: (id, { avatar, privacy, pin }) => pool.query(
-    `UPDATE accounts SET avatar=COALESCE($2::jsonb, avatar), privacy=COALESCE($3::jsonb, privacy), pin=COALESCE($4, pin) WHERE id=$1 RETURNING id,name,role,avatar,privacy`,
-    [id, avatar ? JSON.stringify(avatar) : null, privacy ? JSON.stringify(privacy) : null, pin || null]).then(r => r.rows[0] || null),
+  update: async (id, { avatar, privacy, pin }) => pool.query(
+    `UPDATE accounts SET avatar=COALESCE($2::jsonb, avatar), privacy=COALESCE($3::jsonb, privacy), pin_hash=COALESCE($4, pin_hash) WHERE id=$1 RETURNING id,name,role,avatar,privacy`,
+    [id, avatar ? JSON.stringify(avatar) : null, privacy ? JSON.stringify(privacy) : null, pin ? await hashPin(pin) : null]).then(r => r.rows[0] || null),
   devices: (id) => pool.query(
     `SELECT d.id, d.name, d.kind, d.os, d.last_seen,
        (SELECT count(*) FROM usage_samples u WHERE u.device_id=d.id AND u.ts > now() - interval '7 days' AND NOT u.idle)::int AS active_7d

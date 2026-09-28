@@ -27,7 +27,7 @@ const engines = require('./engines');
 const loadshedding = require('./loadshedding');
 const tailscale = require('./tailscale');
 
-const VERSION = 'M-000029';
+const VERSION = 'M-000030';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
@@ -327,9 +327,14 @@ app.get('/app/wizard/:os', wrap(async (req, res) => {
   const m = OS_META[req.params.os]; if (!m) return res.status(404).send('unknown OS');
   const p = path.join(__dirname, 'wizards', m.wizard);
   if (!require('fs').existsSync(p)) return res.status(404).send('wizard not staged for ' + req.params.os);
+  // The wizard talks to the address it was fetched from — the LAN at home, the
+  // Tailscale address away — so someone setting up from their own house works first time.
+  const host = String(req.headers.host || '');
+  let body = require('fs').readFileSync(p, 'utf8');
+  if (/^[a-z0-9.-]+(:\d{1,5})?$/i.test(host)) body = body.split('http://192.168.1.115:8090').join('http://' + host);
   res.setHeader('Content-Type', m.mime);
   res.setHeader('Content-Disposition', `attachment; filename="${m.wizard}"`);
-  res.send(require('fs').readFileSync(p));
+  res.send(body);
 }));
 app.get('/app/download/:os', wrap(async (req, res) => {
   const m = OS_META[req.params.os]; if (!m) return res.status(404).send('unknown OS');
@@ -647,7 +652,7 @@ app.post('/api/admin/invite', wrap(async (req, res) => {
   const name = String((req.body || {}).name || '').trim().slice(0, 40);
   if (!name) return res.status(400).json({ error: 'A name is needed.' });
   if (await db.accounts.exists(name)) return res.status(409).json({ error: 'That name is already taken.' });
-  const pin = String(Math.floor(100000 + Math.random() * 900000));
+  const pin = String(require('crypto').randomInt(100000, 1000000));
   const a = await db.accounts.create(name, pin);
   db.audit('admin', 'account.invite', { id: a.id, name });
   res.json({ id: a.id, name: a.name, pin });

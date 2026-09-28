@@ -483,10 +483,13 @@
     const h = await api('/api/health/full').catch(()=>null);
     if(!h){ $('health').innerHTML='<div class="empty" style="color:#c0392b">Manager not answering.</div>'; return; }
     const pill=(ok,txt)=>`<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 10px;border:1px solid var(--line);border-radius:2px;margin:0 8px 8px 0"><i style="width:7px;height:7px;display:inline-block;background:${ok===true?'var(--steel)':ok===false?'#c0392b':'#d9a520'}"></i>${txt}</span>`;
-    const lab=h.disk&&h.disk.lab&&h.disk.lab.size?h.disk.lab:(h.disk&&h.disk.root);
+    // both disks: the system one is a small USB stick and fills on its own (logs, caches)
+    const root=h.disk&&h.disk.root&&h.disk.root.size?h.disk.root:null, lab=h.disk&&h.disk.lab&&h.disk.lab.size?h.disk.lab:null;
+    const grade=(p,warn,bad)=>p<warn?true:p<bad?null:false;
     const bk=h.backup;
     $('health').innerHTML = pill(h.db,'database '+(h.db?'ok':'down'))
-      + pill(lab?lab.pct<90:null, lab?('data disk '+lab.pct+'% used'):'disk —')
+      + pill(root?grade(root.pct,85,95):null, root?('system disk '+root.pct+'% used'):'system disk —')
+      + (lab?pill(grade(lab.pct,85,95),'data disk '+lab.pct+'% used'):'')
       + pill(bk?bk.age_h<30:false, bk?('backup '+(bk.age_h<1?'<1 h':Math.round(bk.age_h)+' h')+' ago · '+Math.round(bk.bytes/1024)+' KB'):'no backup yet')
       + pill(true,'manager up '+Math.round(h.uptime_s/3600)+' h · '+h.ws_clients+' live screen'+(h.ws_clients===1?'':'s'))
       + pill(true,h.version);
