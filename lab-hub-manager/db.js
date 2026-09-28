@@ -40,6 +40,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   ip TEXT
 );
 CREATE INDEX IF NOT EXISTS sessions_account ON sessions (account_id);
+-- An admin who unlocked the Portal with their USB key file. Same rule: hash only.
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  id TEXT PRIMARY KEY,
+  admin_id TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
 CREATE TABLE IF NOT EXISTS admins (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -625,4 +633,29 @@ const sessions = {
   prune: () => pool.query('DELETE FROM sessions WHERE expires_at IS NOT NULL AND expires_at<now()')
 };
 
-module.exports = { pool, init, isReady, health, admins, updates, devices, settings, accounts, events, audit, analytics, installs, usage, sessions };
+// ---- admin sessions: what the USB key unlocks. Shorter-lived than a family
+// sign-in (14 days, sliding), and the admin row must still exist to count.
+const adminSeen = new Map();
+const adminSessions = {
+  async create(adminId) {
+    const token = crypto.randomBytes(32).toString('base64url');
+    await pool.query(`INSERT INTO admin_sessions(id,admin_id,expires_at) VALUES($1,$2,now()+interval '14 days')`, [sha(token), adminId]);
+    return token;
+  },
+  async resolve(token) {
+    if (!token || typeof token !== 'string' || token.length > 100) return null;
+    const id = sha(token), hit = adminSeen.get(id);
+    if (hit && Date.now() - hit.at < 60000) return hit.admin;
+    const r = await pool.query(
+      `UPDATE admin_sessions s SET last_seen=now(), expires_at=now()+interval '14 days'
+       FROM admins a WHERE s.id=$1 AND a.id=s.admin_id AND s.expires_at>now() RETURNING a.id, a.name, a.role`, [id]);
+    const admin = r.rows[0] || null;
+    if (admin) adminSeen.set(id, { admin, at: Date.now() }); else adminSeen.delete(id);
+    if (adminSeen.size > 100) adminSeen.clear();
+    return admin;
+  },
+  end: token => { adminSeen.delete(sha(token)); return pool.query('DELETE FROM admin_sessions WHERE id=$1', [sha(token)]); },
+  prune: () => pool.query('DELETE FROM admin_sessions WHERE expires_at<now()')
+};
+
+module.exports = { pool, init, isReady, health, admins, updates, devices, settings, accounts, events, audit, analytics, installs, usage, sessions, adminSessions };

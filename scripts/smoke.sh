@@ -5,7 +5,7 @@
 S=${1:-http://192.168.1.115:8090}
 pass=0; fail=0
 # Over Tailscale the control plane must be refused — so there, a 403 is the pass.
-case "$S" in *://100.*) AWAY=1 ;; *) AWAY=0 ;; esac
+case "$S" in *://100.*) AWAY=1 ;; *://localhost*|*://127.*) AWAY=0; BOX=1 ;; *) AWAY=0 ;; esac
 chk() {
   local want=$1 method=$2 path=$3 data=${4:-} code
   if [ -n "$data" ]; then code=$(curl -s -m 20 -o /dev/null -w '%{http_code}' -X "$method" "$S$path" -H 'Content-Type: application/json' -d "$data")
@@ -14,6 +14,8 @@ chk() {
   else fail=$((fail + 1)); printf 'FAIL %-6s %-44s %s (want %s)\n' "$method" "$path" "$code" "$want"; fi
 }
 home() { if [ "$AWAY" = 1 ]; then chk 403 "${@:2}"; else chk "$@"; fi; }
+# Admin calls: need the unlocked Admin Portal's session from the LAN (401 without it), the box itself is exempt, away is 403.
+adm() { if [ "$AWAY" = 1 ]; then chk 403 "${@:2}"; elif [ "$BOX" = 1 ]; then chk "$@"; else chk 401 "${@:2}"; fi; }
 # Family calls: open at home, but away from home they need a sign-in first.
 fam() { if [ "$AWAY" = 1 ]; then chk 401 "${@:2}"; else chk "$@"; fi; }
 # The guard, from anywhere: a request that came through a proxy counts as outside the house.
@@ -41,9 +43,14 @@ home 200 GET  /api/conductor/entities
 fam 200 GET  /api/conductor/scenes
 home 200 GET  /api/conductor/automations
 fam 200 GET  /api/accounts
-home 200 GET  /api/generations
-home 200 GET  /api/usage/devices
-home 200 GET  /api/tailscale
+adm 200 GET  /api/generations
+adm 200 GET  /api/usage/devices
+adm 200 GET  /api/tailscale
+adm 200 GET  /api/settings/ai
+adm 200 GET  /api/house/summary
+adm 200 GET  /api/engines/jobs
+adm 200 GET  /api/audit
+home 401 POST /api/admin/verify-key '{"token":"x","key":"y"}'
 fam 400 GET  /api/usage/summary
 fam 400 POST /api/usage/ingest '{}'
 fam 400 POST /api/calendar/feeds '{"url":"nope"}'

@@ -27,7 +27,7 @@ const engines = require('./engines');
 const loadshedding = require('./loadshedding');
 const tailscale = require('./tailscale');
 
-const VERSION = 'M-000032';
+const VERSION = 'M-000033';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
@@ -39,7 +39,7 @@ app.use(express.json());
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Lab-Token, X-Lab-Key');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Lab-Token, X-Lab-Key, X-Lab-Admin');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
@@ -78,12 +78,31 @@ const FAMILY_OK = [['GET', /^\/api\/conductor\/scenes$/], ['POST', /^\/api\/cond
 // needed to get one. At home nothing changes: the LAN is trusted as before.
 const OPEN_AWAY = [['GET', /^\/api\/(health|identity|app\/(version|targets))$/], ['POST', /^\/api\/accounts\/login$/]];
 const bearer = req => { const h = String(req.headers.authorization || ''); return /^Bearer\s+\S+$/.test(h) ? h.split(/\s+/)[1] : null; };
+// The admin tier: what the USB key is for. Even at home these need the session you
+// get by unlocking the Admin Portal (sent as X-Lab-Admin) — a guest's phone or a
+// hacked smart plug on the wifi shouldn't be able to run the coding engines, read
+// the money, or switch off-site access. The box itself (and an SSH tunnel into it,
+// which arrives from 127.0.0.1) is exempt. The Conductor's config and the showcase
+// stay family-at-home: the app's Automations page is a family feature.
+const ADMIN = /^\/api\/(settings|devteam|ledgers|master|research|generations|analytics|updates|fleet|admin|wizard\/devices|usage\/(devices|purge)|app\/sync|audit|house|engines|tailscale)(\/|$)/;
+// the way in, and calls that carry their own secret in the URL or body
+const ADMIN_OPEN = [['POST', /^\/api\/admin\/verify-key$/], ['GET', /^\/api\/admin\/whoami$/], ['POST', /^\/api\/admin\/onboard$/],
+  ['POST', /^\/api\/admin\/pair\/[^/]+$/], ['GET', /^\/api\/admin\/status\/[^/]+$/], ['POST', /^\/api\/admin\/issue-key$/],
+  ['GET', /^\/api\/admin\/keyfile\/[^/]+$/], ['POST', /^\/api\/fleet\/checkin\/[^/]+$/]];
+const LOOPBACK = new Set(['127.0.0.1', '::1']);
+const adminFrom = async req => { try { return await db.adminSessions.resolve(String(req.headers['x-lab-admin'] || '')); } catch { return null; } };
 app.use(async (req, res, next) => {
   const ip = peerIP(req);
   if (tailscale.isTailnetIP(ip)) tailscale.touch(ip);
   const token = bearer(req);
   if (token) { try { req.account = await db.sessions.resolve(token); } catch {} }   // home or away: who is asking
-  if (!offNetwork(req)) return next();                        // on the home network → trusted
+  if (!offNetwork(req)) {                                      // on the home network → trusted, bar the admin tier
+    if (ADMIN.test(req.path) && !ADMIN_OPEN.some(([m, re]) => m === req.method && re.test(req.path)) && !LOOPBACK.has(ip)) {
+      req.admin = await adminFrom(req);
+      if (!req.admin) return res.status(401).set('WWW-Authenticate', 'LabAdmin').json({ error: 'Unlock the Admin Portal with your key first.', admin: true });
+    }
+    return next();
+  }
   if (req.method === 'OPTIONS') return next();
   const familyOk = FAMILY_OK.some(([m, re]) => m === req.method && re.test(req.path));
   if (SENSITIVE.some(re => re.test(req.path)) && !familyOk) {
@@ -919,6 +938,9 @@ app.get('/api/usage/export.csv', wrap(async (req, res) => {
 app.post('/api/admin/onboard', wrap(async (req, res) => {
   const name = String((req.body && req.body.name) || '').trim().slice(0, 60);
   if (!name) return res.status(400).json({ error: 'name required' });
+  // the very first admin can walk up and claim the server; after that, only an admin adds another
+  if ((await db.admins.list()).length && !LOOPBACK.has(peerIP(req)) && !(await adminFrom(req)))
+    return res.status(401).set('WWW-Authenticate', 'LabAdmin').json({ error: 'Adding an admin needs an admin: unlock the Admin Portal on this PC first.', admin: true });
   const admin = await db.admins.create(name);
   db.audit(name, 'admin.onboard', { id: admin.id });
   const hubUrl = `http://${lanIP()}:${PORT}`;
@@ -959,8 +981,9 @@ app.post('/api/admin/verify-key', wrap(async (req, res) => {
   const admin = await db.admins.verifyKey(String(b.token || ''), String(b.key || ''));
   if (!admin) return res.status(401).json({ ok: false, error: 'This key is not valid for this server.' });
   db.audit(admin.name, 'admin.key.unlock', { ip: (req.socket.remoteAddress || '').replace(/^::ffff:/, '') });
-  res.json({ ok: true, admin });
+  res.json({ ok: true, admin, session: await db.adminSessions.create(admin.id) });
 }));
+app.post('/api/admin/lock', wrap(async (req, res) => { const t = req.headers['x-lab-admin']; if (t) await db.adminSessions.end(String(t)); res.json({ ok: true }); }));
 
 // ---- Hub Distribution: accounts, telemetry ingest, and serving the Hub ----
 app.get('/api/accounts', wrap(async (req, res) => res.json(await db.accounts.list())));
@@ -983,7 +1006,7 @@ function pinGuard(req, res) {
   return { fail() { rec.n++; if (rec.n >= 10) { rec.until = now + 15 * 60000; db.audit('security', 'pin.lockout', { ip }); } pinFails.set(ip, rec); }, ok() { pinFails.delete(ip); } };
 }
 setInterval(() => { const t = Date.now(); for (const [k, v] of pinFails) if (v.until < t && t - v.first > 15 * 60000) pinFails.delete(k); }, 5 * 60000);
-setInterval(() => db.sessions.prune().catch(() => {}), 24 * 3600000);
+setInterval(() => { db.sessions.prune().catch(() => {}); db.adminSessions.prune().catch(() => {}); }, 24 * 3600000);
 app.post('/api/accounts/login', wrap(async (req, res) => {
   const g = pinGuard(req, res); if (!g) return;
   const a = await db.accounts.login(String((req.body && req.body.name) || ''), String((req.body && req.body.pin) || ''));

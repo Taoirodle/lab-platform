@@ -135,6 +135,7 @@
 </main>
 
 <script src="/labloader.js"></script>
+<script src="/admin-auth.js"></script>
 <script>
   const $=id=>document.getElementById(id);
   const api=(p,opts)=>fetch(p,opts).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'error');return j;});

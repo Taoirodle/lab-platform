@@ -299,6 +299,7 @@
 </main>
 
 <script src="/labloader.js"></script>
+<script src="/admin-auth.js"></script>
 <script>
   const MGR = (window.LAB && window.LAB.managerUrl) || location.origin;
   const $ = id => document.getElementById(id);
@@ -731,7 +732,9 @@
   $('w-panel').onclick  = ()=>wRun('panel');
   $('w-review').onclick = ()=>wRun('review');
 
+  let portalStarted = false;
   function startPortal(){
+    portalStarted = true;
     boot = LabLoader.overlay({ label: 'L.A.B Admin' });
     loadHouse(); setInterval(loadHouse, 120000);
     loadTailscale(); setInterval(loadTailscale, 30000);
@@ -875,8 +878,9 @@
     if(kf.lab!=='admin-key'||!kf.token||!kf.key){ $('kg-err').textContent='This file is not a valid admin key.'; return; }
     try{
       const r=await api('/api/admin/verify-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:kf.token,key:kf.key})});
-      SESS.set({name:r.admin.name,role:r.admin.role,at:Date.now()});
-      hideGate(); startPortal();
+      if(!r.ok||!r.session){ $('kg-err').textContent=r.error||'This key was rejected.'; return; }
+      SESS.set({name:r.admin.name,role:r.admin.role,at:Date.now(),token:r.session});
+      if(portalStarted) location.reload(); else { hideGate(); startPortal(); }
     }catch(e){ $('kg-err').textContent=(e&&e.message)||'This key was rejected.'; }
   }
   const readFile=f=>{ if(!f)return; const rd=new FileReader(); rd.onload=()=>tryUnlock(rd.result); rd.readAsText(f); };
@@ -885,10 +889,12 @@
   ['dragover','dragenter'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('hot');}));
   ['dragleave'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('hot');}));
   dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('hot');readFile(e.dataTransfer.files[0]);});
-  $('kg-lock').onclick=()=>{ SESS.clear(); location.reload(); };
+  $('kg-lock').onclick=()=>{ fetch('/api/admin/lock',{method:'POST'}).catch(()=>{}).finally(()=>{ SESS.clear(); location.reload(); }); };
+  // the server ended the session (expired, or the key was re-issued): back to the key
+  window.addEventListener('lab-admin-locked',()=>{ SESS.clear(); showGate(); $('kg-err').textContent='Your admin session ended. Unlock again with your key.'; });
 
-  // boot: an unlocked session persists for this browser; otherwise the key is required
-  if(SESS.get()) startPortal(); else showGate();
+  // boot: an unlocked session (with its server token) persists for this browser; otherwise the key is required
+  if(LabAdmin.unlocked()) startPortal(); else showGate();
 </script>
 </body>
 </html>

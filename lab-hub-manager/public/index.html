@@ -231,9 +231,16 @@
 </div>
 
 <script src="/labloader.js"></script>
+<script src="/admin-auth.js"></script>
 <script>
   const $=id=>document.getElementById(id);
   let _boot=LabLoader.overlay({label:'L.A.B Hub Manager'});
+  // the fleet, admins and dev team are behind the admin key; say so once instead of showing zeros
+  window.addEventListener('lab-admin-locked',()=>{ if($('locked-bar')) return;
+    const b=document.createElement('div'); b.id='locked-bar';
+    b.style.cssText='background:#fff;border-bottom:1px solid #bcc3cf;border-left:3px solid #c67c1a;padding:10px 26px;font-size:13px;color:#12151b';
+    b.innerHTML='Locked. Fleet, admins and the dev team need the admin key: <a href="/admin/" style="color:#2f5fd0">unlock the Admin Portal</a>, then come back.';
+    document.body.insertBefore(b,document.body.firstChild.nextSibling); });
   const fmt=(b,dp=1)=>{if(!b)return '0 B';const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1024&&i<u.length-1){b/=1024;i++}return b.toFixed(i?dp:0)+' '+u[i];};
   const up=s=>{const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return (d?d+'d ':'')+h+'h '+m+'m';};
 
