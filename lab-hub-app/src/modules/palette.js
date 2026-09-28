@@ -37,7 +37,7 @@ function paint() {
 async function run(it) {
   if (!it) return;
   if (it.kind === 'page') { close(); LAB.go(it.id); return; }
-  if (it.kind === 'scene') { close(); LAB.api('/api/conductor/scenes/' + encodeURIComponent(it.id) + '/run', { method: 'POST', headers: J, body: '{}' }).catch(() => {}); return; }
+  if (it.kind === 'scene') { close(); LAB.api('/api/conductor/scenes/' + encodeURIComponent(it.id) + '/run', { method: 'POST', headers: J, body: '{}' }).then(() => LAB.toast('Ran ' + it.label)).catch(LAB.failed('The scene did not run')); return; }
   const list = box.querySelector('#p-list'); list.innerHTML = '<div class="pitem muted">…</div>';
   try {
     const r = await LAB.api('/api/sauce/ask', { method: 'POST', headers: J, body: JSON.stringify({ account_id: LAB.ctx.me && LAB.ctx.me.id, name: LAB.ctx.me && LAB.ctx.me.name, message: it.label, history: [] }) });

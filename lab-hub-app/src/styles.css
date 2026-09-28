@@ -286,3 +286,14 @@ html.fx-dense .phead h1{font-size:22px}
 /* live-bound generated cards */
 .livelist{margin-top:10px;font-size:13px;line-height:1.7;color:var(--txt2)}
 .livelist div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* V1.8 — boot splash, the sign-in line, what's new */
+#boot{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:var(--bg);transition:opacity .3s}
+#boot.gone{opacity:0;pointer-events:none}
+#boot .bootmark{display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--txt2);font-size:13px;letter-spacing:.3px}
+#boot svg{width:44px;height:44px;color:var(--a1);animation:bootpulse 1.6s ease-in-out infinite}
+@keyframes bootpulse{50%{opacity:.45}}
+.netbar a{color:inherit;text-decoration:underline;cursor:pointer;margin-left:6px}
+.wnew{position:fixed;inset:0;z-index:55;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45)}
+.wnew[hidden]{display:none}
+.wnewcard{width:min(520px,92vw);max-height:84vh;overflow:auto;background:var(--bg)}

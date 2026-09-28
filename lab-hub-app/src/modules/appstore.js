@@ -20,7 +20,6 @@ const EFFECTS = [
   { id: 'calm', title: 'Calm motion', sub: 'No hover lifts, no fades. Just content.' },
   { id: 'dense', title: 'Dense', sub: 'Tighter spacing, smaller cards.' }
 ];
-const fmtMB = b => b ? (b / 1048576).toFixed(b > 10485760 ? 0 : 1) + ' MB' : '';
 
 LAB.register({ id: 'appstore', label: 'App Store', icon: I.store, order: 5,
   async render(el, ctx) {
@@ -45,7 +44,7 @@ LAB.register({ id: 'appstore', label: 'App Store', icon: I.store, order: 5,
       const isIn = installed.has(a.id), go = OPENS[a.id], soonApp = a.status === 'soon';
       return `<div class="acard app" data-app="${LAB.esc(a.id)}"><div class="arow"><div class="aicon"><svg viewBox="0 0 32 32" fill="none" stroke="${LAB.esc(a.accent || '#888')}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${a.icon || ''}</svg></div>
         <div><div class="an">${LAB.esc(a.name)}${soonApp ? '<span class="badge">soon</span>' : ''}${isIn ? '<span class="badge on">installed</span>' : ''}</div><div class="as">${LAB.esc(a.tagline || '')}</div></div></div>
-        ${open === a.id ? `<div class="adesc">${LAB.esc(a.desc || '')}</div><div class="apreview">${a.preview || ''}</div><div class="muted">v${LAB.esc(a.version || '')} · ${fmtMB(a.size_bytes)} · ${a.installs || 0} install${a.installs === 1 ? '' : 's'} on your L.A.B</div>` : ''}
+        ${open === a.id ? `<div class="adesc">${LAB.esc(a.desc || '')}</div><div class="apreview">${a.preview || ''}</div><div class="muted">${soonApp ? 'Not built yet' : 'Part of the Hub'} · ${a.installs || 0} install${a.installs === 1 ? '' : 's'} on your L.A.B</div>` : ''}
         <div class="abtns">${isIn ? (go ? `<button class="btn pri" data-go="${go}">Open</button>` : '<button class="btn" disabled>Not built yet</button>') + `<button class="btn" data-rm="${LAB.esc(a.id)}">Remove</button>`
           : `<button class="btn pri" data-in="${LAB.esc(a.id)}" ${soonApp ? 'disabled' : ''}>${soonApp ? 'Coming' : 'Install'}</button>`}<button class="btn" data-more="${LAB.esc(a.id)}">${open === a.id ? 'Less' : 'Details'}</button></div></div>`;
     }
@@ -84,7 +83,7 @@ LAB.register({ id: 'appstore', label: 'App Store', icon: I.store, order: 5,
       sm.querySelectorAll('[data-in],[data-rm]').forEach(b => b.onclick = async () => {
         if (!ctx.me) { LAB.go('profile'); return; }
         const id = b.dataset.in || b.dataset.rm; b.disabled = true;
-        try { const r = await LAB.api('/api/store/install', { method: 'POST', headers: J, body: JSON.stringify({ account_id: ctx.me.id, app_id: id, remove: !!b.dataset.rm }) }); installed.clear(); (r.installed || []).forEach(x => installed.add(x)); } catch {}
+        try { const r = await LAB.api('/api/store/install', { method: 'POST', headers: J, body: JSON.stringify({ account_id: ctx.me.id, app_id: id, remove: !!b.dataset.rm }) }); installed.clear(); (r.installed || []).forEach(x => installed.add(x)); } catch (e) { LAB.failed('Could not change that')(e); }
         paint();
       });
       sm.querySelectorAll('[data-layout]').forEach(b => b.onclick = () => { LAB.look.setLayout(b.dataset.layout); paint(); });

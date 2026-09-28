@@ -6,9 +6,15 @@
 const J = { 'Content-Type': 'application/json' };
 const semverGt = (a, b) => { const x = String(a || '0').split('.').map(Number), y = String(b || '0').split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) > (y[i] || 0)) return true; if ((x[i] || 0) < (y[i] || 0)) return false; } return false; };
 LAB.openExternal = async url => { if (LAB.isNative()) { try { await window.__TAURI__.core.invoke('plugin:shell|open', { path: url }); return; } catch {} } window.open(url, '_blank'); };
+// {latest:true} · {update:{version,notes}} · {unknown:true} when the question couldn't be asked
 LAB.updates = {
-  async check() { try { const v = await LAB.api('/api/app/version'); return v && v.version && semverGt(v.version, window.LAB_CONFIG.APP_VERSION) ? v : null; } catch { return null; } }
+  async check() {
+    try { const v = await LAB.api('/api/app/version'); if (!v || !v.version) return { unknown: true }; return semverGt(v.version, window.LAB_CONFIG.APP_VERSION) ? { update: v } : { latest: true }; }
+    catch { return { unknown: true }; }
+  }
 };
+// "http://100.x.y.z:8090/hub/" (what the Hub shows) or a bare host both become an origin
+const toOrigin = u => { try { return new URL(/^https?:\/\//i.test(u) ? u : 'http://' + u).origin; } catch { return null; } };
 
 LAB.register({ id: 'settings', label: 'Settings', icon: I.cog, order: 10,
   async render(el, ctx) {
@@ -17,23 +23,37 @@ LAB.register({ id: 'settings', label: 'Settings', icon: I.cog, order: 10,
 
     // ---- about + updates ----
     const c = LAB.el('div', 'card'); el.appendChild(c);
-    c.innerHTML = row('Runtime', LAB.isNative() ? 'Native (Tauri)' : 'Browser preview') + row('Version', 'v' + LAB.esc(window.LAB_CONFIG.APP_VERSION)) + row('Server', `<span id="s-srv">${LAB.esc(ctx.server)}</span>`) + `<div class="muted" id="s-upd">Checking for updates…</div>`;
-    LAB.updates.check().then(u => {
+    c.innerHTML = row('Runtime', LAB.isNative() ? 'Native (Tauri)' : 'Browser preview') + row('Version', 'v' + LAB.esc(window.LAB_CONFIG.APP_VERSION) + ' · <a id="s-new" style="cursor:pointer;color:var(--a1)">what\'s new</a>') + row('Server', `<span id="s-srv">${LAB.esc(ctx.server)}</span>`) + `<div class="muted" id="s-upd">Checking for updates…</div>`;
+    c.querySelector('#s-new').onclick = () => LAB.whatsNew.show();
+    LAB.updates.check().then(r => {
       const box = c.querySelector('#s-upd');
-      if (!u) { box.textContent = 'You are on the latest version.'; return; }
+      if (r.unknown) { box.textContent = 'Could not check for updates right now.'; return; }
+      if (r.latest) { box.textContent = 'You are on the latest version.'; return; }
+      const u = r.update;
       box.innerHTML = `<b>v${LAB.esc(u.version)} is available.</b> ${LAB.esc(u.notes || '')} <button class="btn pri" id="s-get">Get the update</button>`;
       box.querySelector('#s-get').onclick = () => LAB.openExternal(ctx.server + '/app/download/' + (LAB.ctx.device && /mac/i.test(LAB.ctx.device.os) ? 'mac' : LAB.ctx.device && /linux/i.test(LAB.ctx.device.os) ? 'linux' : 'win'));
     });
 
     // ---- where your L.A.B is: home address + away (Tailscale) address ----
     const sv = LAB.el('div', 'card'); el.appendChild(sv);
-    const okUrl = u => /^https?:\/\/[^\s/]+(:\d+)?$/.test(u);
-    sv.innerHTML = `<h3>Where your L.A.B is</h3><div class="muted">Right now: <b>${LAB.esc(LAB.where)}</b> via ${LAB.esc(ctx.server)}. The app tries home first, then away, and switches back on its own.</div>
+    const learned = LAB.store.get('server_away_auto');
+    sv.innerHTML = `<h3>Where your L.A.B is</h3><div class="muted">Right now: <b>${LAB.esc(LAB.where)}</b> via ${LAB.esc(ctx.server)}. The app tries home first, then away, and goes back home by itself when home answers again.</div>
       <form class="wadd" style="margin-top:10px"><span class="muted" style="flex:0 0 52px">Home</span><input id="s-url" placeholder="${LAB.esc(window.LAB_CONFIG.SERVER)}" value="${LAB.esc(LAB.store.get('server') || '')}"><button class="btn">Save</button></form>
-      <form class="wadd" id="s-away-f"><span class="muted" style="flex:0 0 52px">Away</span><input id="s-away" placeholder="http://100.x.y.z:8090 (the server's Tailscale address)" value="${LAB.esc(LAB.store.get('server_away') || '')}"><button class="btn">Save</button></form>
-      <div class="muted" id="s-msg">Leave Home empty for the built-in address. Away is used when home doesn't answer — install Tailscale on the server and put its 100.x address here.</div>`;
-    sv.querySelector('form').onsubmit = e => { e.preventDefault(); const u = sv.querySelector('#s-url').value.trim().replace(/\/+$/, ''); if (u && !okUrl(u)) { sv.querySelector('#s-msg').textContent = 'That needs to look like http://host:port'; return; } if (u) LAB.store.set('server', u); else LAB.store.del('server'); sv.querySelector('#s-msg').textContent = 'Saved — used on the next launch.'; };
-    sv.querySelector('#s-away-f').onsubmit = e => { e.preventDefault(); const u = sv.querySelector('#s-away').value.trim().replace(/\/+$/, ''); if (u && !okUrl(u)) { sv.querySelector('#s-msg').textContent = 'That needs to look like http://host:port'; return; } if (u) LAB.store.set('server_away', u); else LAB.store.del('server_away'); sv.querySelector('#s-msg').textContent = 'Saved — tried whenever home does not answer.'; };
+      <form class="wadd" id="s-away-f"><span class="muted" style="flex:0 0 52px">Away</span><input id="s-away" placeholder="${LAB.esc(learned || 'http://100.x.y.z:8090 (the server\'s Tailscale address)')}" value="${LAB.esc(LAB.store.get('server_away') || '')}"><button class="btn">Save</button></form>
+      <div class="muted" id="s-msg">${learned ? 'Away is learned from your server (' + LAB.esc(learned) + '); type one only to override it.' : 'Leave both empty to use what the app knows. Away needs Tailscale on this device and the server; the app learns the address the first time it\'s home.'}</div>`;
+    const saveAddr = (inputSel, key, done) => e => {
+      e.preventDefault(); const raw = sv.querySelector(inputSel).value.trim(), msg = sv.querySelector('#s-msg');
+      if (!raw) { LAB.store.del(key); msg.textContent = 'Cleared.'; return; }
+      const o = toOrigin(raw); if (!o) { msg.textContent = 'That needs to look like http://host:port'; return; }
+      LAB.store.set(key, o); sv.querySelector(inputSel).value = o; msg.textContent = done;
+    };
+    sv.querySelector('form').onsubmit = saveAddr('#s-url', 'server', 'Saved — used on the next launch.');
+    sv.querySelector('#s-away-f').onsubmit = saveAddr('#s-away', 'server_away', 'Saved — tried whenever home does not answer.');
+
+    // ---- the setup wizard: it lives on the family Hub, which has the one-line command for this OS ----
+    const wz = LAB.el('div', 'card'); el.appendChild(wz);
+    wz.innerHTML = `<h3>Set up this PC</h3><div class="prow"><span>Run the setup wizard to (re)personalise the app for how you use this machine. It opens on the family Hub, under "Get the app".</span><button class="btn" id="wz-open">Open</button></div>`;
+    wz.querySelector('#wz-open').onclick = () => LAB.openExternal(ctx.server + '/hub/');
 
     // ---- native: measuring, autostart ----
     if (LAB.isNative()) {
@@ -53,7 +73,7 @@ LAB.register({ id: 'settings', label: 'Settings', icon: I.cog, order: 10,
       tray.innerHTML = `<h3>In the background</h3>
         <div class="prow"><span>Keep running in the tray when the window is closed (quit from the tray icon).</span><button class="btn ${ctt ? 'pri' : ''}" id="ct-tog">${ctt ? 'On' : 'Off'}</button></div>
         <div class="prow"><span>Remind me 15 minutes before calendar events (one OS notification, nothing else).</span><button class="btn ${rem ? 'pri' : ''}" id="rm-tog">${rem ? 'On' : 'Off'}</button></div>`;
-      tray.querySelector('#ct-tog').onclick = async () => { await LAB.invoke('close_to_tray_set', { enable: !ctt }); LAB.go('settings'); };
+      tray.querySelector('#ct-tog').onclick = async () => { await LAB.invoke('close_to_tray_set', { enable: !ctt }); LAB.store.set('close_to_tray', !ctt); LAB.go('settings'); };
       tray.querySelector('#rm-tog').onclick = () => { LAB.store.set('reminders', !rem); if (!rem) LAB.notify.start(); else LAB.notify.stop(); LAB.go('settings'); };
     }
 
@@ -80,8 +100,13 @@ LAB.register({ id: 'settings', label: 'Settings', icon: I.cog, order: 10,
     d.querySelector('#d-del').onclick = async () => {
       if (!confirm('Delete this PC\'s measurements from the server and reset the app? Your account stays.')) return;
       const msg = d.querySelector('#d-msg'); msg.textContent = 'Deleting…';
-      try { if (LAB.isNative()) { LAB.telemetry.stop(); await LAB.api('/api/usage/device/' + encodeURIComponent(LAB.telemetry.deviceId()), { method: 'DELETE' }); } } catch {}
-      Object.keys(localStorage).filter(k => k.startsWith('labapp_')).forEach(k => localStorage.removeItem(k));
+      // the server's copy first; if that fails, say so and keep everything — a half-done delete is worse than none
+      if (LAB.isNative()) {
+        LAB.telemetry.stop();
+        try { await LAB.api('/api/usage/device/' + encodeURIComponent(LAB.telemetry.deviceId()), { method: 'DELETE' }); }
+        catch (e) { LAB.telemetry.start(); msg.textContent = 'Could not delete it from the server — ' + e.message + '. Nothing was removed; try again when your L.A.B is reachable.'; return; }
+      }
+      Object.keys(localStorage).filter(k => k.startsWith('labapp_') || k.startsWith('labcache_')).forEach(k => localStorage.removeItem(k));
       msg.textContent = 'Done. Restarting…'; setTimeout(() => location.reload(), 800);
     };
   }

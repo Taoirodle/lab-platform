@@ -26,8 +26,10 @@ LAB.calendar = {
 LAB.register({ id: 'calendar', label: 'Calendar', icon: I.cal, order: 3,
   async render(el, ctx) {
     el.innerHTML = head('Calendar', 'The family calendar and your own, together. Link Google, Apple or Outlook in a minute.');
-    let cur = new Date(); cur.setDate(1);
-    let sel = ymd(new Date()), events = [];
+    // the month and day you were on survive a re-render (a live update from someone else)
+    const was = LAB.calendar.view || {};
+    let cur = was.cur ? new Date(was.cur) : new Date(); cur.setDate(1);
+    let sel = was.sel || ymd(new Date()), events = [];
     const wrap = LAB.el('div', 'calwrap'); el.appendChild(wrap);
     wrap.innerHTML = `
       <div class="card"><div class="calnav"><button class="btn" id="c-prev" title="Previous month">‹</button><b id="c-title"></b><button class="btn" id="c-next" title="Next month">›</button><button class="btn" id="c-today">Today</button></div><div class="calgrid" id="c-grid"></div></div>
@@ -37,11 +39,15 @@ LAB.register({ id: 'calendar', label: 'Calendar', icon: I.cal, order: 3,
     const feedsCard = LAB.el('div', 'card'); el.appendChild(feedsCard);
     // the other direction: put the family calendar on every phone
     const sub = LAB.el('div', 'card'); el.appendChild(sub);
-    const icsUrl = ctx.server.replace(/\/+$/, '') + '/api/calendar/family.ics';
-    sub.innerHTML = `<h3>Family calendar on your phone</h3><div class="muted">Subscribe once and family events (plus calendars shared with the family) show up in your phone's own calendar app, refreshed automatically. On the home network or over Tailscale.</div>
-      <form class="wadd" style="margin-top:10px"><input readonly value="${LAB.esc(icsUrl)}" onclick="this.select()"><button class="btn" type="button" id="ics-copy">Copy</button></form>
+    // at home the plain link works; from away a phone needs a read-only key (a new one retires the old)
+    const away = LAB._serverWhere === 'away';
+    let icsUrl = ctx.server.replace(/\/+$/, '') + '/api/calendar/family.ics';
+    sub.innerHTML = `<h3>Family calendar on your phone</h3><div class="muted">Subscribe once and family events (plus calendars shared with the family) show up in your phone's own calendar app, refreshed automatically.${away ? ' From away, the link carries a read-only key; making a new one switches the old one off.' : ''}</div>
+      <form class="wadd" style="margin-top:10px"><input readonly id="ics-url" value="${away ? '' : LAB.esc(icsUrl)}" placeholder="Make a link first" onclick="this.select()">${away ? '<button class="btn" type="button" id="ics-make">Make a link</button>' : ''}<button class="btn" type="button" id="ics-copy">Copy</button></form>
       <div class="muted">iPhone: Settings → Calendar → Accounts → Add Subscribed Calendar. Android/Google: paste it under "From URL" on calendar.google.com. Outlook: Add calendar → Subscribe from web.</div>`;
-    sub.querySelector('#ics-copy').onclick = async () => { try { await navigator.clipboard.writeText(icsUrl); sub.querySelector('#ics-copy').textContent = 'Copied'; } catch {} };
+    const mk = sub.querySelector('#ics-make');
+    if (mk) mk.onclick = async () => { try { const r = await LAB.api('/api/calendar/feed-key', { method: 'POST' }); icsUrl += '?k=' + r.key; sub.querySelector('#ics-url').value = icsUrl; } catch (e) { LAB.toast('Could not make a link — ' + e.message); } };
+    sub.querySelector('#ics-copy').onclick = async () => { const v = sub.querySelector('#ics-url').value; if (!v) return; try { await navigator.clipboard.writeText(v); sub.querySelector('#ics-copy').textContent = 'Copied'; } catch {} };
 
     async function load() {
       const from = ymd(new Date(cur.getFullYear(), cur.getMonth(), -6)), to = ymd(new Date(cur.getFullYear(), cur.getMonth() + 1, 7));
@@ -49,6 +55,7 @@ LAB.register({ id: 'calendar', label: 'Calendar', icon: I.cal, order: 3,
       paint();
     }
     function paint() {
+      LAB.calendar.view = { cur: cur.toISOString(), sel };
       wrap.querySelector('#c-title').textContent = MONTHS[cur.getMonth()] + ' ' + cur.getFullYear();
       const g = wrap.querySelector('#c-grid'), first = new Date(cur.getFullYear(), cur.getMonth(), 1);
       const startOff = (first.getDay() + 6) % 7, dim = new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate(), today = ymd(new Date());
@@ -77,8 +84,9 @@ LAB.register({ id: 'calendar', label: 'Calendar', icon: I.cal, order: 3,
     wrap.querySelector('#a-add').onsubmit = async e => {
       e.preventDefault(); const t = e.target.querySelector('input').value.trim(); if (!t) return;
       const at = wrap.querySelector('#a-time').value;
-      await LAB.api('/api/shared/events', { method: 'POST', headers: J, body: JSON.stringify({ title: t, day: sel, time: at || null, by: ctx.me && ctx.me.name }) }).catch(() => {});
-      e.target.reset(); load();
+      try { await LAB.api('/api/shared/events', { method: 'POST', headers: J, body: JSON.stringify({ title: t, day: sel, time: at || null, by: ctx.me && ctx.me.name }) }); e.target.reset(); }
+      catch (err) { LAB.failed('Could not add the event')(err); }
+      load();
     };
 
     // ---- linked calendars ----
@@ -96,8 +104,8 @@ LAB.register({ id: 'calendar', label: 'Calendar', icon: I.cal, order: 3,
             <input type="color" id="f-color" value="${PROVIDERS[prov].color}" title="Colour"><label class="chk"><input type="checkbox" id="f-shared"> Show it to the whole family</label><button class="btn pri">Link</button></form>
           <div class="muted" id="f-msg"></div>`;
         feedsCard.querySelectorAll('[data-prov]').forEach(b => b.onclick = () => { prov = b.dataset.prov; draw(); });
-        feedsCard.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { b.disabled = true; await LAB.api('/api/calendar/feeds/' + encodeURIComponent(b.dataset.del) + (ctx.me ? '?account_id=' + encodeURIComponent(ctx.me.id) : ''), { method: 'DELETE' }).catch(() => {}); paintFeeds(); load(); });
-        feedsCard.querySelectorAll('[data-refresh]').forEach(b => b.onclick = async () => { b.disabled = true; b.textContent = '…'; await LAB.api('/api/calendar/feeds/' + encodeURIComponent(b.dataset.refresh) + '/refresh', { method: 'POST' }).catch(() => {}); paintFeeds(); load(); });
+        feedsCard.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { b.disabled = true; await LAB.api('/api/calendar/feeds/' + encodeURIComponent(b.dataset.del) + (ctx.me ? '?account_id=' + encodeURIComponent(ctx.me.id) : ''), { method: 'DELETE' }).catch(LAB.failed('Could not remove it')); paintFeeds(); load(); });
+        feedsCard.querySelectorAll('[data-refresh]').forEach(b => b.onclick = async () => { b.disabled = true; b.textContent = '…'; await LAB.api('/api/calendar/feeds/' + encodeURIComponent(b.dataset.refresh) + '/refresh', { method: 'POST' }).catch(LAB.failed('Could not sync it')); paintFeeds(); load(); });
         feedsCard.querySelector('#f-add').onsubmit = async e => {
           e.preventDefault(); const msg = feedsCard.querySelector('#f-msg'), btn = e.target.querySelector('button.pri');
           msg.textContent = 'Reading the calendar…'; btn.disabled = true;

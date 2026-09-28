@@ -9,8 +9,10 @@ const EMOJI = ['🙂', '😎', '🦊', '🐼', '🐸', '🦉', '🐙', '🌵', '
 const COLORS = ['#9a86ff', '#ff9e6b', '#ffcf6f', '#6fb4ff', '#7ee2b8', '#ff7bb0', '#c9a7ff', '#98a1ba'];
 
 async function signIn(mode, name, pin) {
-  const a = await LAB.api('/api/accounts' + (mode === 'login' ? '/login' : ''), { method: 'POST', headers: J, body: JSON.stringify({ name, pin }) });
-  LAB.store.set('account', a); LAB.ctx.me = a;
+  const { session, ...a } = await LAB.api('/api/accounts' + (mode === 'login' ? '/login' : ''), { method: 'POST', headers: J, body: JSON.stringify({ name, pin }) });
+  if (session) LAB.store.set('session', session);
+  LAB.store.set('account', a); LAB.ctx.me = a; LAB.store.del('signedOut');
+  if (LAB.ctx.needSignIn) { LAB.ctx.needSignIn = false; LAB.paintFoot(); if (LAB.live) LAB.live.restart(); }
   // this PC becomes yours: link its device + any samples it sent before you signed in
   if (LAB.isNative() && LAB.telemetry) LAB.api('/api/usage/link', { method: 'POST', headers: J, body: JSON.stringify({ device_id: LAB.telemetry.deviceId(), account_id: a.id }) }).catch(() => {});
   LAB.api('/api/events', { method: 'POST', headers: J, body: JSON.stringify({ account_id: a.id, type: 'login', payload: { name: a.name, app: 'hub-app' } }) }).catch(() => {});
@@ -19,16 +21,25 @@ async function signIn(mode, name, pin) {
   LAB.renderNav();
   return a;
 }
-LAB.account = { signIn, signOut() { LAB.store.del('account'); LAB.ctx.me = null; LAB.renderNav(); } };
+// Signing out ends the session on the server, forgets this PC's copies, and the
+// setup wizard's note won't quietly sign you back in on the next launch.
+async function signOut() {
+  await LAB.api('/api/accounts/logout', { method: 'POST' }).catch(() => {});
+  ['account', 'session', 'sauce_hist', 'sauce_page_hist'].forEach(k => LAB.store.del(k));
+  LAB.store.set('signedOut', true); LAB.cache.clear();
+  LAB.ctx.me = null; LAB.renderNav();
+}
+LAB.account = { signIn, signOut };
 
-function gate(el) {
+function gate(el, again) {
   let mode = 'login';
   const card = LAB.el('div', 'card gate'); el.appendChild(card);
+  const away = LAB._serverWhere === 'away';
   const draw = () => {
-    card.innerHTML = `<h3>${mode === 'login' ? 'Log in' : 'Create your account'}</h3><div class="muted">${mode === 'login' ? 'Same name and PIN as on the family Hub.' : 'Your name on the Hub and a 4–8 digit PIN.'}</div>
-      <form class="gateform"><input id="g-name" placeholder="Name" maxlength="40" required autocomplete="off"><input id="g-pin" type="password" inputmode="numeric" placeholder="PIN" maxlength="8" required><button class="btn pri">${mode === 'login' ? 'Log in' : 'Create'}</button></form>
-      <div class="muted" id="g-msg"></div><div class="muted">${mode === 'login' ? 'New here? <a id="g-sw">Create an account</a>' : 'Already set up? <a id="g-sw">Log in</a>'}</div>`;
-    card.querySelector('#g-sw').onclick = () => { mode = mode === 'login' ? 'create' : 'login'; draw(); };
+    card.innerHTML = `<h3>${mode === 'login' ? (again ? 'Sign in again' : 'Log in') : 'Create your account'}</h3><div class="muted">${again ? 'You\'re away from home, and your L.A.B wants to know it\'s you.' : mode === 'login' ? 'Same name and PIN as on the family Hub.' : 'Your name on the Hub and a 4–8 digit PIN.'}</div>
+      <form class="gateform"><input id="g-name" placeholder="Name" maxlength="40" required autocomplete="off" value="${again && LAB.ctx.me ? LAB.esc(LAB.ctx.me.name) : ''}"><input id="g-pin" type="password" inputmode="numeric" placeholder="PIN" maxlength="8" required><button class="btn pri">${mode === 'login' ? 'Log in' : 'Create'}</button></form>
+      <div class="muted" id="g-msg"></div><div class="muted">${away ? 'New accounts are made at home, or with an invite from whoever runs the L.A.B.' : mode === 'login' ? 'New here? <a id="g-sw">Create an account</a>' : 'Already set up? <a id="g-sw">Log in</a>'}</div>`;
+    const sw = card.querySelector('#g-sw'); if (sw) sw.onclick = () => { mode = mode === 'login' ? 'create' : 'login'; draw(); };
     card.querySelector('form').onsubmit = async e => {
       e.preventDefault(); const msg = card.querySelector('#g-msg'); msg.textContent = '…';
       try { await signIn(mode, card.querySelector('#g-name').value.trim(), card.querySelector('#g-pin').value.trim()); LAB.go('profile'); }
@@ -41,6 +52,7 @@ function gate(el) {
 LAB.register({ id: 'profile', label: 'Profile', icon: I.user, order: 2,
   async render(el, ctx) {
     if (!ctx.me) { el.innerHTML = head('Profile', 'Sign in and this app becomes yours.'); gate(el); return; }
+    if (ctx.needSignIn) { el.innerHTML = head('Profile', 'Away from home, your L.A.B asks who you are.'); gate(el, true); return; }
     let me = ctx.me;
     try { const fresh = await LAB.api('/api/accounts/' + me.id); me = { ...me, ...fresh }; LAB.store.set('account', me); LAB.ctx.me = me; } catch {}
     const av = me.avatar || { emoji: '🙂', color: COLORS[0] }, p = (ctx.profile && ctx.profile.personalization) || {};
@@ -52,7 +64,7 @@ LAB.register({ id: 'profile', label: 'Profile', icon: I.user, order: 2,
       <div class="idtext"><div class="big">${LAB.esc(me.name)}</div><div class="muted">${LAB.esc(me.role || 'member')} · on the Hub since ${me.created_at ? new Date(me.created_at).toLocaleDateString() : '—'}</div>
       ${p.archetype ? `<div class="muted">This machine: <b>${LAB.esc(p.archetype)}</b> · signature tab <b>${LAB.esc(p.personalizedTab || '—')}</b></div>` : ''}</div>
       <button class="btn" id="signout">Sign out</button>`;
-    idc.querySelector('#signout').onclick = () => { LAB.account.signOut(); LAB.go('profile'); };
+    idc.querySelector('#signout').onclick = async () => { await LAB.account.signOut(); LAB.go('profile'); };
 
     const save = LAB.el('div', 'card savebar'); save.hidden = true;
     save.innerHTML = `<form class="wadd"><span class="muted">Confirm with your PIN to save</span><input type="password" inputmode="numeric" placeholder="PIN" maxlength="8" required style="flex:0 0 120px"><button class="btn pri">Save changes</button></form><div class="muted" id="s-msg"></div>`;

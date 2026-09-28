@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <div id="boot"><div class="bootmark"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="24" height="24" rx="3"/><rect x="11" y="11" width="10" height="10"/></svg><div>Finding your L.A.B…</div></div></div>
   <div id="shell">
     <aside id="sidebar">
       <div class="brand">
@@ -14,7 +15,7 @@
         <div class="bname">L.A.B</div>
       </div>
       <nav id="nav"></nav>
-      <div class="side-foot" id="side-foot">v0.2.7</div>
+      <div class="side-foot" id="side-foot">v1.8.0</div>
     </aside>
     <div id="content"><div id="netbar" class="netbar" hidden></div><main id="main"></main></div>
   </div>
@@ -37,6 +38,7 @@
   <script src="modules/genpages.js"></script>
   <script src="modules/palette.js"></script>
   <script src="modules/live.js"></script>
-  <script>LAB.boot().then(() => { LAB.telemetry.start(); LAB.notify.start(); if (LAB.live) LAB.live.start(); });</script>
+  <script src="modules/whatsnew.js"></script>
+  <script>LAB.boot().then(() => { LAB.telemetry.start(); LAB.notify.start(); if (LAB.live) LAB.live.start(); LAB.whatsNew.maybeShow(); });</script>
 </body>
 </html>

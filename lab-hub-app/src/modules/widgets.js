@@ -74,7 +74,7 @@ LAB.widgets.register({ id: 'start', title: 'Getting started', size: 'md',
     ]);
     const steps = [
       { ok: !!ctx.me, text: 'Sign in — same name and PIN as the family Hub', go: 'profile' },
-      { ok: !!(ctx.profile && ctx.profile.personalization && ctx.profile.personalization.archetype), text: 'Run the setup wizard so this app shapes itself to your PC', go: 'settings' },
+      { ok: !!(ctx.profile && ctx.profile.personalization && ctx.profile.personalization.archetype), text: 'Run the setup wizard (Settings → Set up this PC) so this app shapes itself to your PC', go: 'settings' },
       { ok: feeds.length > 0, text: 'Link your Google / Apple / Outlook calendar', go: 'calendar' },
       { ok: ents.some(e => e.driver !== 'virtual'), text: 'Add a real device (WLED strip, WiZ bulb, a sensor)', go: 'automations' },
       { ok: !LAB.isNative() || LAB.telemetry.enabled, text: 'Keep measuring on, so Stats and For you fill in', go: 'settings' }
@@ -125,8 +125,8 @@ LAB.widgets.register({ id: 'todos', title: 'Lists', size: 'md',
         + `<form class="wadd"><input placeholder="Add to ${LAB.esc(cur)}…" maxlength="300"><button class="btn pri">Add</button></form>` + (done ? `<div class="muted">${done} done</div>` : '');
       el.querySelectorAll('[data-list]').forEach(b => b.onclick = () => { cur = b.dataset.list; LAB.store.set('todo_list', cur); paint(); });
       el.querySelector('[data-newlist]').onclick = () => { const n = prompt('Name the new list (e.g. Groceries, Chores, Holiday)'); if (n && n.trim()) { cur = n.trim().slice(0, 30); cur = cur[0].toUpperCase() + cur.slice(1); LAB.store.set('todo_list', cur); paint(); } };
-      el.querySelectorAll('input[type=checkbox]').forEach(c => c.onchange = async () => { await post('/api/shared/todos/' + c.dataset.id + '/toggle').catch(() => {}); paint(); });
-      el.querySelector('form').onsubmit = async e => { e.preventDefault(); const v = e.target.querySelector('input').value.trim(); if (!v) return; await post('/api/shared/todos', { text: v, by: ctx.me && ctx.me.name, list: cur }).catch(() => {}); paint(); };
+      el.querySelectorAll('input[type=checkbox]').forEach(c => c.onchange = async () => { await post('/api/shared/todos/' + c.dataset.id + '/toggle').catch(LAB.failed('Could not tick that off')); paint(); });
+      el.querySelector('form').onsubmit = async e => { e.preventDefault(); const v = e.target.querySelector('input').value.trim(); if (!v) return; await post('/api/shared/todos', { text: v, by: ctx.me && ctx.me.name, list: cur }).catch(LAB.failed('Could not add it to the list')); paint(); };
     };
     await paint();
   } });
@@ -151,10 +151,10 @@ LAB.widgets.register({ id: 'house', title: 'House', size: 'md',
         el.innerHTML = '<div class="muted">No real devices yet — these rooms are demo switches. Add a WLED strip, a WiZ bulb or a sensor and this becomes your actual house.</div>';
         link(el, 'Add a device', 'automations'); return;
       }
-      el.innerHTML = `<div class="wrooms">${rooms.map(r => `<button class="rtile ${r.on ? 'on' : ''}" data-room="${LAB.esc(r.id)}"><span>${r.on ? 'on' : 'off'}${r.online === false ? ' · offline' : ''}</span>${LAB.esc(r.name)}</button>`).join('') || '<div class="muted">No rooms yet — add devices from the web Hub.</div>'}</div>`
+      el.innerHTML = `<div class="wrooms">${rooms.map(r => `<button class="rtile ${r.on ? 'on' : ''}" data-room="${LAB.esc(r.id)}"><span>${r.on ? 'on' : 'off'}${r.online === false ? ' · offline' : ''}</span>${LAB.esc(r.name)}</button>`).join('') || '<div class="muted">No rooms yet — add devices in Automations.</div>'}</div>`
         + (scenes.length ? `<div class="wscenes">${scenes.map(s => `<button class="btn" data-scene="${LAB.esc(s.id)}">${LAB.esc(s.name)}</button>`).join('')}</div>` : '');
-      el.querySelectorAll('[data-room]').forEach(b => b.onclick = async () => { b.disabled = true; await post('/api/kiosk/rooms/' + encodeURIComponent(b.dataset.room) + '/toggle').catch(() => {}); paint(); });
-      el.querySelectorAll('[data-scene]').forEach(b => b.onclick = async () => { b.disabled = true; await post('/api/conductor/scenes/' + encodeURIComponent(b.dataset.scene) + '/run').catch(() => {}); paint(); });
+      el.querySelectorAll('[data-room]').forEach(b => b.onclick = async () => { b.disabled = true; await post('/api/kiosk/rooms/' + encodeURIComponent(b.dataset.room) + '/toggle').catch(LAB.failed('That room did not switch')); paint(); });
+      el.querySelectorAll('[data-scene]').forEach(b => b.onclick = async () => { b.disabled = true; await post('/api/conductor/scenes/' + encodeURIComponent(b.dataset.scene) + '/run').catch(LAB.failed('The scene did not run')); paint(); });
     };
     await paint();
   } });
@@ -173,7 +173,7 @@ LAB.widgets.register({ id: 'sauce', title: 'Ask The Sauce', size: 'md',
       try {
         const r = await post('/api/sauce/ask', { account_id: ctx.me && ctx.me.id, name: ctx.me && ctx.me.name, message: t, history: hist.slice(-3).flatMap(x => [{ role: 'user', text: x.q }, { role: 'assistant', text: x.a }]) });
         hist = hist.concat([{ q: t, a: r.reply, did: r.did || [] }]).slice(-6); LAB.store.set('sauce_hist', hist); paint();
-      } catch { const th = el.querySelector('#w-sauce-think'); if (th) th.textContent = 'The Sauce is out of reach right now.'; }
+      } catch (err) { const th = el.querySelector('#w-sauce-think'); if (th) th.textContent = err.message || 'The Sauce is out of reach right now.'; }
     };
   } });
 

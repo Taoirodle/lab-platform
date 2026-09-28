@@ -5,7 +5,8 @@
 // ============================================================
 LAB.live = {
   ws: null, tries: 0, timer: null, last: 0,
-  url() { return LAB.ctx.server.replace(/^http/, 'ws') + '/ws'; },
+  // away from home the live channel needs your sign-in too (a socket can't carry a header)
+  url() { const s = LAB.store.get('session'); return LAB.ctx.server.replace(/^http/, 'ws') + '/ws' + (s ? '?s=' + encodeURIComponent(s) : ''); },
   start() {
     if (this.ws || !LAB.ctx.server) return;
     try { this.ws = new WebSocket(this.url()); } catch { return this.retry(); }
@@ -28,8 +29,7 @@ const TOAST_WHAT = { todos: 'changed the family list', events: 'changed the fami
 document.addEventListener('lab:shared', e => {
   const d = e.detail; if (!d.by || !TOAST_WHAT[d.what]) return;
   if (LAB.ctx.me && d.by.toLowerCase() === String(LAB.ctx.me.name).toLowerCase()) return;
-  let t = document.getElementById('toast'); if (!t) { t = LAB.el('div', 'toast'); t.id = 'toast'; document.body.appendChild(t); }
-  t.textContent = d.by + ' ' + TOAST_WHAT[d.what]; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 4000);
+  LAB.toast(d.by + ' ' + TOAST_WHAT[d.what]);
 });
 
 // Pages that show shared things re-render when they change — unless you're mid-typing.

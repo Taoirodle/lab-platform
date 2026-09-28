@@ -18,7 +18,7 @@ const I = {
   cog:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg>'
 };
 const head = (t, s) => `<div class="phead"><h1>${LAB.esc(t)}</h1>${s ? `<p>${LAB.esc(s)}</p>` : ''}</div>`;
-const soon = (what) => `<div class="soon">Module scaffolded — ${LAB.esc(what)} lands here. The framework is ready; content is pluggable.</div>`;
+const soon = (what) => `<div class="soon">${LAB.esc(what)}</div>`;
 
 // 1 · Dashboard — lives in modules/dashboard.js (widget grid) -----------------
 
@@ -38,7 +38,7 @@ LAB.register({ id: 'sauce', label: 'The Sauce', icon: I.sauce, order: 4,
     const add = (role, html, cls) => { const m = LAB.el('div', 'msg ' + role + (cls ? ' ' + cls : ''), html); card.querySelector('#slog').appendChild(m); card.querySelector('#slog').scrollTop = 1e9; return m; };
     if (hist.length) { for (const h of hist.slice(-8)) add(h.role === 'user' ? 'me' : 'them', LAB.esc(h.text).replace(/\n/g, '<br>')); }
     else add('them', `Hey${ctx.me ? ' ' + LAB.esc(ctx.me.name) : ''} — what do you need?`);
-    const SUGG = ["What's on tonight?", 'What is left on the list?', 'Add milk to Groceries', 'Lights off in the lounge', 'Run movie night'];
+    const SUGG = ["What's on this week?", 'What is left on the list?', 'Add milk to Groceries', 'What can you do?'];
     card.querySelector('#schips').innerHTML = SUGG.map(s => `<button class="chip" type="button" data-q="${LAB.esc(s)}">${LAB.esc(s)}</button>`).join('') + (hist.length ? '<button class="chip" type="button" data-clear>Clear chat</button>' : '');
     card.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { card.querySelector('#sin').value = b.dataset.q; card.querySelector('#sform').requestSubmit(); });
     const clr = card.querySelector('[data-clear]'); if (clr) clr.onclick = () => { LAB.store.del('sauce_page_hist'); LAB.go('sauce'); };
@@ -53,7 +53,7 @@ LAB.register({ id: 'sauce', label: 'The Sauce', icon: I.sauce, order: 4,
         if (r.did && r.did.length) add('them', '⚡ ' + r.did.map(LAB.esc).join(' &nbsp;·&nbsp; '), 'did');
         hist.push({ role: 'assistant', text: r.reply }); LAB.store.set('sauce_page_hist', hist.slice(-12));
       }
-      catch { think.remove(); add('them', 'My brain took too long — try again.', 'think'); }
+      catch (err) { think.remove(); add('them', LAB.esc(err.message || 'I could not answer just now.'), 'think'); }
       card.querySelector('#ssend').disabled = false;
     };
   }
@@ -62,7 +62,7 @@ LAB.register({ id: 'sauce', label: 'The Sauce', icon: I.sauce, order: 4,
 // 5 · App Store — lives in modules/appstore.js (installs, overhauls, effects, themes, widgets)
 
 // 6 · Automations — "when X, do Y" (locked in as slot 6) --------------------
-LAB.register({ id: 'automations', label: 'Automations', icon: I.bolt, order: 6,
+LAB.register({ id: 'automations', label: 'Automations', icon: I.bolt, order: 6, homeOnly: true,
   async render(el, ctx) {
     el.innerHTML = head('Automations', 'Your devices, your scenes, and "when this happens, do that" — all on the L.A.B Conductor, our own engine.');
     const wrap = LAB.el('div'); el.appendChild(wrap);
@@ -79,7 +79,7 @@ LAB.register({ id: 'automations', label: 'Automations', icon: I.bolt, order: 6,
       const rooms = [...new Set(entities.map(e => e.room))];
       wrap.innerHTML = `
         <div class="card"><h3>Devices · ${entities.length}</h3>
-          ${entities.length ? entities.map(e => `<div class="prow"><span><i class="dot" style="background:${e.online ? '#7ee2b8' : 'var(--stroke)'}"></i> <b>${LAB.esc(e.name)}</b><div class="muted">${LAB.esc(e.room)} · ${LAB.esc(KINDS[e.kind] || e.kind)} · ${LAB.esc(DRIVERS[e.driver] ? e.driver : e.driver)}${e.address ? ' · ' + LAB.esc(e.address) : ''} · ${e.online ? 'online' : 'not seen'}</div></span><span class="btnrow"><button class="btn" data-tog="${LAB.esc(e.id)}" ${e.kind === 'light' || e.kind === 'led-strip' ? '' : 'hidden'}>${e.state && e.state.on ? 'Off' : 'On'}</button><button class="btn" data-del="${LAB.esc(e.id)}">Remove</button></span></div>`).join('') : '<div class="muted">No devices yet.</div>'}
+          ${entities.length ? entities.map(e => `<div class="prow"><span><i class="dot" style="background:${e.online ? '#7ee2b8' : 'var(--stroke)'}"></i> <b>${LAB.esc(e.name)}</b><div class="muted">${LAB.esc(e.room)} · ${LAB.esc(KINDS[e.kind] || e.kind)} · ${LAB.esc(DRIVERS[e.driver] || e.driver)}${e.address ? ' · ' + LAB.esc(e.address) : ''} · ${e.online ? 'online' : 'not seen'}</div></span><span class="btnrow"><button class="btn" data-tog="${LAB.esc(e.id)}" ${e.kind === 'light' || e.kind === 'led-strip' ? '' : 'hidden'}>${e.state && e.state.on ? 'Off' : 'On'}</button><button class="btn" data-del="${LAB.esc(e.id)}">Remove</button></span></div>`).join('') : '<div class="muted">No devices yet.</div>'}
           <div class="btnrow" style="margin-top:12px"><button class="btn" id="d-probe">Check who's online</button></div>
           ${flash ? `<div class="privacy" style="border:1px solid var(--a2);border-radius:12px;padding:12px;margin-top:12px">Token for <b>${LAB.esc(flash.name)}</b> — shown once. Flash it into the sensor: it POSTs to <code>/api/ingest/${LAB.esc(flash.token)}</code><br><code style="user-select:all">${LAB.esc(flash.token)}</code></div>` : ''}</div>
         <div class="card"><h3>Add a device</h3><form class="devform" id="d-add">
@@ -98,16 +98,16 @@ LAB.register({ id: 'automations', label: 'Automations', icon: I.bolt, order: 6,
           <div class="autobuild" style="margin-top:12px">
           <span class="w">When</span>
           <select id="a-kind"><option value="motion">motion in…</option><option value="time">the clock says…</option></select>
-          <select id="a-trig">${rooms.map(r => `<option value="${LAB.esc(r)}">${LAB.esc(r)}</option>`).join('') || '<option>no rooms yet</option>'}</select>
+          <select id="a-trig">${rooms.map(r => `<option value="${LAB.esc(r)}">${LAB.esc(r)}</option>`).join('') || '<option value="">no rooms yet</option>'}</select>
           <input type="time" id="a-at" value="22:00" hidden>
           <span id="a-days" hidden>${['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d, i) => `<label class="daychip"><input type="checkbox" value="${i}" checked><span>${d}</span></label>`).join('')}</span>
           <span class="w">run</span>
-          <select id="a-scene">${scenes.map(s => `<option value="${LAB.esc(s.id)}">${LAB.esc(s.name)}</option>`).join('') || '<option>no scenes yet</option>'}</select>
+          <select id="a-scene">${scenes.map(s => `<option value="${LAB.esc(s.id)}">${LAB.esc(s.name)}</option>`).join('') || '<option value="">no scenes yet</option>'}</select>
           <button class="btn pri" id="a-save">Create</button></div><div class="muted" id="a-msg"></div></div>`;
       const kindSel = wrap.querySelector('#a-kind');
       kindSel.onchange = () => { const time = kindSel.value === 'time'; wrap.querySelector('#a-trig').hidden = time; wrap.querySelector('#a-at').hidden = !time; wrap.querySelector('#a-days').hidden = !time; };
-      wrap.querySelectorAll('[data-aen]').forEach(b => b.onclick = async () => { await post('/api/conductor/automations/' + encodeURIComponent(b.dataset.aen) + '/enable', { enabled: b.dataset.on !== '1' }).catch(() => {}); refresh(); });
-      wrap.querySelectorAll('[data-adel]').forEach(b => b.onclick = async () => { await post('/api/conductor/automations/' + encodeURIComponent(b.dataset.adel), null, 'DELETE').catch(() => {}); refresh(); });
+      wrap.querySelectorAll('[data-aen]').forEach(b => b.onclick = async () => { await post('/api/conductor/automations/' + encodeURIComponent(b.dataset.aen) + '/enable', { enabled: b.dataset.on !== '1' }).catch(LAB.failed('Could not switch it')); refresh(); });
+      wrap.querySelectorAll('[data-adel]').forEach(b => b.onclick = async () => { await post('/api/conductor/automations/' + encodeURIComponent(b.dataset.adel), null, 'DELETE').catch(LAB.failed('Could not delete it')); refresh(); });
       flash = null;
       wrap.querySelector('#d-add').onsubmit = async e => {
         e.preventDefault(); const msg = wrap.querySelector('#d-msg'); const driver = wrap.querySelector('#d-driver').value, addr = wrap.querySelector('#d-addr').value.trim();
@@ -120,23 +120,23 @@ LAB.register({ id: 'automations', label: 'Automations', icon: I.bolt, order: 6,
           refresh();
         } catch (err) { msg.textContent = err.message; }
       };
-      wrap.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { if (!confirm('Remove this device from the L.A.B?')) return; await post('/api/conductor/entities/' + encodeURIComponent(b.dataset.del), null, 'DELETE').catch(() => {}); refresh(); });
-      wrap.querySelectorAll('[data-tog]').forEach(b => b.onclick = async () => { b.disabled = true; await post('/api/conductor/entities/' + encodeURIComponent(b.dataset.tog) + '/command', { toggle: true }).catch(() => {}); refresh(); });
-      wrap.querySelectorAll('[data-run]').forEach(b => b.onclick = async () => { b.disabled = true; await post('/api/conductor/scenes/' + encodeURIComponent(b.dataset.run) + '/run').catch(() => {}); refresh(); });
-      wrap.querySelector('#d-probe').onclick = async e => { e.target.disabled = true; e.target.textContent = 'Checking…'; await LAB.api('/api/conductor/probe').catch(() => {}); refresh(); };
+      wrap.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { if (!confirm('Remove this device from the L.A.B?')) return; await post('/api/conductor/entities/' + encodeURIComponent(b.dataset.del), null, 'DELETE').catch(LAB.failed('Could not remove the device')); refresh(); });
+      wrap.querySelectorAll('[data-tog]').forEach(b => b.onclick = async () => { b.disabled = true; await post('/api/conductor/entities/' + encodeURIComponent(b.dataset.tog) + '/command', { toggle: true }).catch(LAB.failed('The device did not answer')); refresh(); });
+      wrap.querySelectorAll('[data-run]').forEach(b => b.onclick = async () => { b.disabled = true; await post('/api/conductor/scenes/' + encodeURIComponent(b.dataset.run) + '/run').catch(LAB.failed('The scene did not run')); refresh(); });
+      wrap.querySelector('#d-probe').onclick = async e => { e.target.disabled = true; e.target.textContent = 'Checking…'; await LAB.api('/api/conductor/probe').catch(LAB.failed('Could not check the devices')); refresh(); };
       wrap.querySelector('#s-save').onsubmit = async e => {
         e.preventDefault(); const name = wrap.querySelector('#s-name').value.trim(); if (!name) return;
         const actions = entities.filter(x => x.kind === 'light' || x.kind === 'led-strip').map(x => ({ entity: x.id, cmd: { on: !!(x.state && x.state.on) } }));
-        await post('/api/conductor/scenes', { name, actions }).catch(() => {}); refresh();
+        await post('/api/conductor/scenes', { name, actions }).catch(LAB.failed('Could not save the scene')); refresh();
       };
       const save = wrap.querySelector('#a-save');
       if (save) save.onclick = async () => {
-        const scene = wrap.querySelector('#a-scene').value, sceneName = scenes.find(s => s.id === scene)?.name || scene; if (!scene) return;
+        const scene = wrap.querySelector('#a-scene').value, sceneName = scenes.find(s => s.id === scene)?.name || scene; if (!scene) { wrap.querySelector('#a-msg').textContent = 'Save a scene first — an automation runs one.'; return; }
         let body;
         if (kindSel.value === 'time') {
           const at = wrap.querySelector('#a-at').value, days = [...wrap.querySelectorAll('#a-days input:checked')].map(i => +i.value);
           if (!at) return; body = { name: `${sceneName} at ${at}`, trigger: { type: 'time', at, days: days.length === 7 ? [] : days }, actions: [{ scene }] };
-        } else { const room = wrap.querySelector('#a-trig').value; if (!room) return; body = { name: `${sceneName} when motion in ${room}`, trigger: { type: 'motion', room }, actions: [{ scene }] }; }
+        } else { const room = wrap.querySelector('#a-trig').value; if (!room) { wrap.querySelector('#a-msg').textContent = 'Add a device in a room first — motion is watched per room.'; return; } body = { name: `${sceneName} when motion in ${room}`, trigger: { type: 'motion', room }, actions: [{ scene }] }; }
         try { await post('/api/conductor/automations', body); refresh(); } catch (e) { wrap.querySelector('#a-msg').textContent = e.message; }
       };
     }
@@ -151,7 +151,7 @@ LAB.register({ id: 'device', label: 'Device', icon: I.device, order: 8,
   render(el, ctx) {
     el.innerHTML = head('Device', 'What this machine is — read natively by the app.');
     const d = ctx.device;
-    if (!d) { el.appendChild(LAB.el('div', 'card', soon('native specs show in the installed app (browser preview can\'t read hardware)'))); return; }
+    if (!d) { el.appendChild(LAB.el('div', 'card', soon('Hardware details show in the installed app; a browser can\'t read them.'))); return; }
     const c = LAB.el('div', 'card'); c.innerHTML = `
       <div class="prow"><span>Host</span><b>${LAB.esc(d.hostname)}</b></div>
       <div class="prow"><span>OS</span><b>${LAB.esc(d.os)} ${LAB.esc(d.os_version)} (${LAB.esc(d.arch)})</b></div>
