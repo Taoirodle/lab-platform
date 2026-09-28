@@ -8,6 +8,9 @@ const { Pool } = require('pg');
 const crypto = require('crypto');
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 8, idleTimeoutMillis: 30000 });
+// An idle connection dropping (Postgres restarting, a Docker hiccup) is emitted
+// here; with no listener Node treats it as fatal and the whole Manager goes down.
+pool.on('error', e => console.error('db pool:', e.message));
 const uid = () => crypto.randomBytes(8).toString('hex');
 
 const SCHEMA = `
@@ -23,6 +26,20 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS avatar JSONB;    -- {emoji, color}
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS privacy JSONB;   -- {share_stats, share_calendar}
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS prefs JSONB;     -- app prefs synced across your installs: {widgets, look, skin, skinvars, updated_at}
 CREATE UNIQUE INDEX IF NOT EXISTS accounts_name_lower ON accounts (lower(name));
+-- Sign-ins. Only a hash of each token is kept; the token itself goes to the
+-- device once. kind 'session' = a signed-in app or browser; kind 'feed' = a
+-- read-only calendar subscription key that can open nothing else.
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL DEFAULT 'session',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ,
+  agent TEXT,
+  ip TEXT
+);
+CREATE INDEX IF NOT EXISTS sessions_account ON sessions (account_id);
 CREATE TABLE IF NOT EXISTS admins (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -574,4 +591,38 @@ const usage = {
      FROM devices d LEFT JOIN accounts a ON a.id=d.account_id WHERE d.kind='hub-app' ORDER BY d.last_seen DESC NULLS LAST`).then(r => r.rows)
 };
 
-module.exports = { pool, init, isReady, health, admins, updates, devices, settings, accounts, events, audit, analytics, installs, usage };
+// ---- sessions: how a device proves who it is when it isn't on the home network ----
+const sha = t => crypto.createHash('sha256').update(String(t)).digest('base64url');
+const SESSION_DAYS = 90;                        // sliding: every use pushes it out again
+const seenCache = new Map();                    // token hash → {account, at}; spares the DB a write per request
+const sessions = {
+  async create(accountId, { kind = 'session', agent = null, ip = null } = {}) {
+    const token = crypto.randomBytes(32).toString('base64url');
+    await pool.query(
+      `INSERT INTO sessions(id,account_id,kind,expires_at,agent,ip) VALUES($1,$2,$3,${kind === 'session' ? `now()+interval '${SESSION_DAYS} days'` : 'NULL'},$4,$5)`,
+      [sha(token), accountId, kind, agent ? String(agent).slice(0, 160) : null, ip]);
+    return token;
+  },
+  /// The account behind a token, or null. Refreshes last_seen at most once a minute.
+  async resolve(token, kind = 'session') {
+    if (!token || typeof token !== 'string' || token.length > 100) return null;
+    const id = sha(token), hit = seenCache.get(id);
+    if (hit && hit.kind === kind && Date.now() - hit.at < 60000) return hit.account;
+    const r = await pool.query(
+      `UPDATE sessions s SET last_seen=now(), expires_at=CASE WHEN s.kind='session' THEN now()+interval '${SESSION_DAYS} days' ELSE s.expires_at END
+       FROM accounts a WHERE s.id=$1 AND s.kind=$2 AND a.id=s.account_id AND (s.expires_at IS NULL OR s.expires_at>now())
+       RETURNING a.id, a.name, a.role`, [id, kind]);
+    const account = r.rows[0] || null;
+    if (account) seenCache.set(id, { account, kind, at: Date.now() }); else seenCache.delete(id);
+    if (seenCache.size > 500) seenCache.clear();
+    return account;
+  },
+  end: token => { seenCache.delete(sha(token)); return pool.query('DELETE FROM sessions WHERE id=$1', [sha(token)]); },
+  endKind: (accountId, kind) => { seenCache.clear(); return pool.query('DELETE FROM sessions WHERE account_id=$1 AND kind=$2', [accountId, kind]); },
+  /// After a PIN change: every other device signs in again.
+  endOthers: (accountId, keepToken) => { seenCache.clear(); return pool.query(`DELETE FROM sessions WHERE account_id=$1 AND kind='session' AND id<>$2`, [accountId, sha(keepToken || '')]); },
+  list: accountId => pool.query(`SELECT kind, created_at, last_seen, agent FROM sessions WHERE account_id=$1 AND (expires_at IS NULL OR expires_at>now()) ORDER BY last_seen DESC`, [accountId]).then(r => r.rows),
+  prune: () => pool.query('DELETE FROM sessions WHERE expires_at IS NOT NULL AND expires_at<now()')
+};
+
+module.exports = { pool, init, isReady, health, admins, updates, devices, settings, accounts, events, audit, analytics, installs, usage, sessions };

@@ -27,7 +27,7 @@ const engines = require('./engines');
 const loadshedding = require('./loadshedding');
 const tailscale = require('./tailscale');
 
-const VERSION = 'M-000031';
+const VERSION = 'M-000032';
 const PORT = Number(process.env.LAB_MANAGER_PORT) || 8090;
 const DATA_ROOT = process.env.LAB_DATA_ROOT || '/srv/lab';
 
@@ -67,24 +67,43 @@ function isHomeIP(ip) {
 const offNetwork = req => viaProxy(req) || !isHomeIP(peerIP(req));
 const SENSITIVE = [
   /^\/(index\.html)?$/, /^\/admin(\/|$)/, /^\/install(\/|$)/, /^\/showcase(\/|$)/,
-  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/devices|app\/sync|audit|house|engines|tailscale)/
+  /^\/api\/(settings|devteam|ledgers|master|research|generations|conductor|analytics|updates|fleet|admin|wizard\/devices|showcase|usage\/(devices|purge)|app\/sync|audit|house|engines|tailscale)/
 ];
 // The two Conductor calls the Hub's House tab makes. Running a scene is the same
 // kind of act as tapping a kiosk light; building or editing one stays home-only.
 const FAMILY_OK = [['GET', /^\/api\/conductor\/scenes$/], ['POST', /^\/api\/conductor\/scenes\/[^/]+\/run$/]];
+// Off the home network the family surface is for family: a tailnet can hold
+// devices that aren't (work machines, a friend's laptop). So away from home every
+// API call carries a sign-in — Authorization: Bearer <session> — except the few
+// needed to get one. At home nothing changes: the LAN is trusted as before.
+const OPEN_AWAY = [['GET', /^\/api\/(health|identity|app\/(version|targets))$/], ['POST', /^\/api\/accounts\/login$/]];
+const bearer = req => { const h = String(req.headers.authorization || ''); return /^Bearer\s+\S+$/.test(h) ? h.split(/\s+/)[1] : null; };
 app.use(async (req, res, next) => {
   const ip = peerIP(req);
   if (tailscale.isTailnetIP(ip)) tailscale.touch(ip);
+  const token = bearer(req);
+  if (token) { try { req.account = await db.sessions.resolve(token); } catch {} }   // home or away: who is asking
   if (!offNetwork(req)) return next();                        // on the home network → trusted
   if (req.method === 'OPTIONS') return next();
-  if (!SENSITIVE.some(re => re.test(req.path))) return next(); // family surface → allowed off-network
-  if (FAMILY_OK.some(([m, re]) => m === req.method && re.test(req.path))) return next();
-  const token = req.headers['x-lab-token'], key = req.headers['x-lab-key'];
-  if (token && key) {
-    try { if (await db.admins.verifyKey(String(token), String(key))) return next(); } catch {}
+  const familyOk = FAMILY_OK.some(([m, re]) => m === req.method && re.test(req.path));
+  if (SENSITIVE.some(re => re.test(req.path)) && !familyOk) {
+    const t = req.headers['x-lab-token'], k = req.headers['x-lab-key'];
+    if (t && k) { try { if (await db.admins.verifyKey(String(t), String(k))) return next(); } catch {} }
+    return res.status(403).json({ error: 'This part of your L.A.B is only available on the home network.' });
   }
-  return res.status(403).json({ error: 'This part of your L.A.B is only available on the home network.' });
+  if (!req.path.startsWith('/api/')) return next();            // pages and downloads hold no family data
+  if (OPEN_AWAY.some(([m, re]) => m === req.method && re.test(req.path))) return next();
+  if (req.method === 'POST' && req.path === '/api/accounts')
+    return res.status(403).json({ error: 'New accounts are made at home. Away from home, ask for an invite and sign in with it.' });
+  // phone calendars can't send a header, so a subscription carries a read-only key instead
+  if (req.method === 'GET' && req.path === '/api/calendar/family.ics' && typeof req.query.k === 'string') {
+    try { if (await db.sessions.resolve(req.query.k, 'feed')) return next(); } catch {}
+  }
+  if (req.account) return next();
+  return res.status(401).json({ error: 'Sign in to use your L.A.B away from home.', signin: true });
 });
+// Away from home, an account-scoped call must be about the signed-in account.
+const mine = (req, id) => !offNetwork(req) || (!!req.account && String(req.account.id) === String(id));
 
 app.use(express.static(path.join(__dirname, 'public'), { setHeaders: r => r.setHeader('Cache-Control', 'no-cache') }));
 const wrap = fn => (req, res) => Promise.resolve(fn(req, res)).catch(e => { console.error(e.message); if (!res.headersSent) res.status(500).json({ error: e.message }); });
@@ -403,16 +422,25 @@ app.delete('/api/usage/device/:id', wrap(async (req, res) => {
 }));
 
 // ---- Calendar: ICS subscriptions (no OAuth) + merged family view ----------
-app.get('/api/calendar/feeds', wrap(async (req, res) => res.json(await calendar.listFeeds(req.query.account_id ? Number(req.query.account_id) : null))));
+// Away from home the account is the signed-in one, whatever the request says.
+const acctFor = (req, v) => (offNetwork(req) ? Number(req.account.id) : (v ? Number(v) : null));
+app.get('/api/calendar/feeds', wrap(async (req, res) => res.json(await calendar.listFeeds(acctFor(req, req.query.account_id)))));
 app.post('/api/calendar/feeds', wrap(async (req, res) => {
   const b = req.body || {};
   if (!b.url || !/^(https?|webcal):\/\//i.test(String(b.url).trim())) return res.status(400).json({ error: 'Paste an iCal (ICS / webcal) link.' });
-  try { res.json(await calendar.addFeed({ account_id: b.account_id ? Number(b.account_id) : null, name: b.name, url: b.url, color: b.color, shared: !!b.shared })); }
+  try { res.json(await calendar.addFeed({ account_id: acctFor(req, b.account_id), name: b.name, url: b.url, color: b.color, shared: !!b.shared })); }
   catch (e) { res.status(400).json({ error: 'Could not read that calendar: ' + e.message }); }
 }));
 app.post('/api/calendar/feeds/:id/refresh', wrap(async (req, res) => res.json(await calendar.refreshById(req.params.id))));
-app.delete('/api/calendar/feeds/:id', wrap(async (req, res) => res.json(await calendar.removeFeed(req.params.id, req.query.account_id ? Number(req.query.account_id) : null))));
-app.get('/api/calendar/events', wrap(async (req, res) => res.json(await calendar.events({ account_id: req.query.account_id ? Number(req.query.account_id) : null, from: req.query.from, to: req.query.to }))));
+app.delete('/api/calendar/feeds/:id', wrap(async (req, res) => res.json(await calendar.removeFeed(req.params.id, acctFor(req, req.query.account_id)))));
+app.get('/api/calendar/events', wrap(async (req, res) => res.json(await calendar.events({ account_id: acctFor(req, req.query.account_id), from: req.query.from, to: req.query.to }))));
+// A read-only key for subscribing a phone to the family calendar from outside the
+// house. A new key retires the old one, so a link that got around can be killed.
+app.post('/api/calendar/feed-key', wrap(async (req, res) => {
+  if (!req.account) return res.status(401).json({ error: 'Sign in first.', signin: true });
+  await db.sessions.endKind(req.account.id, 'feed');
+  res.json({ key: await db.sessions.create(req.account.id, { kind: 'feed', agent: 'calendar subscription', ip: peerIP(req) }) });
+}));
 // the family calendar as a feed phones can subscribe to (family events + calendars shared with the family)
 app.get('/api/calendar/family.ics', wrap(async (req, res) => {
   res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
@@ -533,10 +561,24 @@ async function runSauceAction(a) {
   } catch { /* an action must never break the reply */ }
   return null;
 }
+// The Sauce spends real model time on every question. A person asking gets plenty;
+// something hammering it doesn't. Tighter away from home.
+const sauceHits = new Map();   // account or address → timestamps in the last hour
+function sauceAllowed(req) {
+  const who = req.account ? 'a' + req.account.id : 'ip' + peerIP(req), now = Date.now();
+  const recent = (sauceHits.get(who) || []).filter(t => now - t < 3600000);
+  const ok = recent.length < (offNetwork(req) ? 40 : 150);
+  if (ok) recent.push(now);
+  sauceHits.set(who, recent);
+  return ok;
+}
+setInterval(() => { const t = Date.now(); for (const [k, v] of sauceHits) if (!v.length || t - v[v.length - 1] > 3600000) sauceHits.delete(k); }, 10 * 60000);
 app.post('/api/sauce/ask', wrap(async (req, res) => {
   const b = req.body || {};
   const message = String(b.message || '').slice(0, 2000);
   if (!message.trim()) return res.status(400).json({ error: 'empty message' });
+  if (!sauceAllowed(req)) return res.status(429).json({ error: 'That is a lot of questions for one hour. Try again a little later.' });
+  if (offNetwork(req)) b.account_id = req.account.id;
   const t0 = Date.now();
   try {
     // give the brain the live state of the house — devices, today's calendar, the open list — so it answers from reality
@@ -929,7 +971,7 @@ app.post('/api/accounts', wrap(async (req, res) => {
   if (await db.accounts.exists(name)) return res.status(409).json({ error: 'That name is already taken.' });
   const a = await db.accounts.create(name, pin);
   db.audit(name, 'account.create', { id: a.id });
-  res.json(a);
+  res.json({ ...a, session: await db.sessions.create(a.id, { agent: req.headers['user-agent'], ip: peerIP(req) }) });
 }));
 // PINs are short, so guessing must be slow: 10 wrong tries per address per 15 minutes.
 const pinFails = new Map();
@@ -941,24 +983,31 @@ function pinGuard(req, res) {
   return { fail() { rec.n++; if (rec.n >= 10) { rec.until = now + 15 * 60000; db.audit('security', 'pin.lockout', { ip }); } pinFails.set(ip, rec); }, ok() { pinFails.delete(ip); } };
 }
 setInterval(() => { const t = Date.now(); for (const [k, v] of pinFails) if (v.until < t && t - v.first > 15 * 60000) pinFails.delete(k); }, 5 * 60000);
+setInterval(() => db.sessions.prune().catch(() => {}), 24 * 3600000);
 app.post('/api/accounts/login', wrap(async (req, res) => {
   const g = pinGuard(req, res); if (!g) return;
   const a = await db.accounts.login(String((req.body && req.body.name) || ''), String((req.body && req.body.pin) || ''));
   if (!a) { g.fail(); return res.status(401).json({ error: 'Wrong name or PIN.' }); }
-  g.ok(); res.json(a);
+  g.ok();
+  db.audit('account:' + a.id, 'account.signin', { away: offNetwork(req) });
+  res.json({ ...a, session: await db.sessions.create(a.id, { agent: req.headers['user-agent'], ip: peerIP(req) }) });
 }));
+app.post('/api/accounts/logout', wrap(async (req, res) => { const t = bearer(req); if (t) await db.sessions.end(t); res.json({ ok: true }); }));
 // Profile: public shape, PIN-confirmed edits, linked devices
 app.get('/api/accounts/:id', wrap(async (req, res) => {
+  if (!mine(req, req.params.id)) return res.status(403).json({ error: 'That is someone else\'s account.' });
   const a = await db.accounts.get(Number(req.params.id)); if (!a) return res.status(404).json({ error: 'no such account' });
   res.json(a);
 }));
 app.get('/api/accounts/:id/devices', wrap(async (req, res) => {
+  if (!mine(req, req.params.id)) return res.status(403).json({ error: 'That is someone else\'s account.' });
   const id = Number(req.params.id);
   const [devices, profiles] = await Promise.all([db.accounts.devices(id), db.accounts.profiles(id)]);
   res.json({ devices, profiles });
 }));
 app.patch('/api/accounts/:id', wrap(async (req, res) => {
   const id = Number(req.params.id), b = req.body || {};
+  if (!mine(req, id)) return res.status(403).json({ error: 'That is someone else\'s account.' });
   const g = pinGuard(req, res); if (!g) return;
   if (!(await db.accounts.checkPin(id, String(b.pin || '')))) { g.fail(); return res.status(401).json({ error: 'Confirm with your PIN.' }); }
   g.ok();
@@ -968,6 +1017,7 @@ app.patch('/api/accounts/:id', wrap(async (req, res) => {
   let pin = null;
   if (b.new_pin != null) { if (!/^\d{4,8}$/.test(String(b.new_pin))) return res.status(400).json({ error: 'A PIN is 4–8 digits.' }); pin = String(b.new_pin); }
   const a = await db.accounts.update(id, { avatar, privacy, pin });
+  if (pin) await db.sessions.endOthers(id, bearer(req));      // a new PIN signs every other device out
   db.audit('account:' + id, 'account.update', { avatar: !!avatar, privacy: !!privacy, pin: !!pin });
   res.json(a);
 }));
@@ -989,8 +1039,12 @@ app.get('/api/family/stats', wrap(async (req, res) => {
   res.json(Object.values(by).sort((a, b) => b.total - a.total));
 }));
 // App prefs synced across your installs (widgets layout, look, theme). Small, whitelisted keys only.
-app.get('/api/accounts/:id/prefs', wrap(async (req, res) => res.json((await db.accounts.getPrefs(Number(req.params.id))) || {})));
+app.get('/api/accounts/:id/prefs', wrap(async (req, res) => {
+  if (!mine(req, req.params.id)) return res.status(403).json({ error: 'That is someone else\'s account.' });
+  res.json((await db.accounts.getPrefs(Number(req.params.id))) || {});
+}));
 app.put('/api/accounts/:id/prefs', wrap(async (req, res) => {
+  if (!mine(req, req.params.id)) return res.status(403).json({ error: 'That is someone else\'s account.' });
   const b = req.body || {}, out = {};
   if (Array.isArray(b.widgets)) out.widgets = b.widgets.map(String).slice(0, 40);
   if (b.look && typeof b.look === 'object') out.look = { layout: String(b.look.layout || 'default').slice(0, 20), effects: (b.look.effects || []).map(String).slice(0, 10) };
@@ -1004,6 +1058,7 @@ app.put('/api/accounts/:id/prefs', wrap(async (req, res) => {
 app.post('/api/usage/link', wrap(async (req, res) => {
   const b = req.body || {}; const dev = String(b.device_id || '').slice(0, 80), acct = Number(b.account_id);
   if (!dev || !acct) return res.status(400).json({ error: 'device_id + account_id required' });
+  if (!mine(req, acct)) return res.status(403).json({ error: 'That is someone else\'s account.' });
   await db.pool.query('UPDATE devices SET account_id=$2 WHERE id=$1', [dev, acct]).catch(() => {});
   const r = await db.pool.query('UPDATE usage_samples SET account_id=$2 WHERE device_id=$1 AND account_id IS NULL', [dev, acct]);
   res.json({ ok: true, linked_samples: r.rowCount });
@@ -1011,7 +1066,7 @@ app.post('/api/usage/link', wrap(async (req, res) => {
 app.post('/api/events', wrap(async (req, res) => {
   const b = req.body || {};
   if (!b.type) return res.status(400).json({ error: 'type required' });
-  const ev = { account_id: b.account_id, device_id: b.device_id, type: String(b.type).slice(0, 40), payload: b.payload };
+  const ev = { account_id: offNetwork(req) ? req.account.id : b.account_id, device_id: b.device_id, type: String(b.type).slice(0, 40), payload: b.payload };
   await db.events.add(ev);
   ledgers.learnFromEvent(ev).catch(() => {});   // ledgers grow autonomously from usage
   res.json({ ok: true });
@@ -1042,6 +1097,7 @@ app.get('/api/master/latest', wrap(async (req, res) => {
 // ---- In-app feedback (smart categories) ----
 app.post('/api/feedback', wrap(async (req, res) => {
   const b = req.body || {};
+  if (offNetwork(req)) b.account_id = req.account.id;
   const category = String(b.category || 'idea').slice(0, 20);
   const sentiment = ['love'].includes(category) ? 'positive' : ['bug', 'toomuch', 'meh'].includes(category) ? 'negative' : 'neutral';
   await db.pool.query('INSERT INTO feedback(account_id,category,sentiment,text,context) VALUES($1,$2,$3,$4,$5)',
@@ -1122,8 +1178,16 @@ app.all('/api/*', (req, res) => res.status(404).json({ error: 'No such endpoint.
 app.get('*', (req, res) => (offNetwork(req) ? res.status(404).send('Not found.') : res.sendFile(path.join(__dirname, 'public', 'index.html'))));
 
 const START = Date.now();
+// A promise nobody caught is a bug to log, not a reason to drop every screen in the house.
+process.on('unhandledRejection', e => console.error('unhandled:', (e && e.stack) || e));
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+// The live channel carries who changed what and who came home, so away from home
+// it needs a sign-in too — as ?s=<session>, since a browser can't set headers on it.
+const wss = new WebSocketServer({ server, path: '/ws', verifyClient: (info, done) => {
+  if (!offNetwork(info.req)) return done(true);
+  let s = null; try { s = new URL(info.req.url, 'http://x').searchParams.get('s'); } catch {}
+  db.sessions.resolve(s).then(a => done(!!a, 401), () => done(false, 401));
+} });
 wss.on('connection', ws => { if (lastStats) ws.send(JSON.stringify({ type: 'stats', data: lastStats })); });
 function broadcast(msg) { const p = JSON.stringify(msg); for (const c of wss.clients) if (c.readyState === 1) c.send(p); }
 

@@ -14,6 +14,8 @@ chk() {
   else fail=$((fail + 1)); printf 'FAIL %-6s %-44s %s (want %s)\n' "$method" "$path" "$code" "$want"; fi
 }
 home() { if [ "$AWAY" = 1 ]; then chk 403 "${@:2}"; else chk "$@"; fi; }
+# Family calls: open at home, but away from home they need a sign-in first.
+fam() { if [ "$AWAY" = 1 ]; then chk 401 "${@:2}"; else chk "$@"; fi; }
 # The guard, from anywhere: a request that came through a proxy counts as outside the house.
 off() {
   local want=$1 method=$2 path=$3 code
@@ -25,26 +27,26 @@ chk 200 GET  /api/health
 chk 200 GET  /api/identity
 chk 200 GET  /api/app/targets
 chk 200 GET  /api/app/version
-chk 200 GET  /api/shared/todos
-chk 200 GET  /api/shared/events
-chk 200 GET  "/api/calendar/events?from=2026-01-01&to=2026-12-31"
-chk 200 GET  /api/calendar/feeds
-chk 200 GET  /api/calendar/family.ics
-chk 200 GET  /api/family/stats
-chk 200 GET  /api/store/apps
-chk 200 GET  /api/hub/generations
-chk 200 GET  /api/kiosk/rooms
-chk 200 GET  /api/kiosk/summary
+fam 200 GET  /api/shared/todos
+fam 200 GET  /api/shared/events
+fam 200 GET  "/api/calendar/events?from=2026-01-01&to=2026-12-31"
+fam 200 GET  /api/calendar/feeds
+fam 200 GET  /api/calendar/family.ics
+fam 200 GET  /api/family/stats
+fam 200 GET  /api/store/apps
+fam 200 GET  /api/hub/generations
+fam 200 GET  /api/kiosk/rooms
+fam 200 GET  /api/kiosk/summary
 home 200 GET  /api/conductor/entities
-chk 200 GET  /api/conductor/scenes
+fam 200 GET  /api/conductor/scenes
 home 200 GET  /api/conductor/automations
-chk 200 GET  /api/accounts
+fam 200 GET  /api/accounts
 home 200 GET  /api/generations
 home 200 GET  /api/usage/devices
 home 200 GET  /api/tailscale
-chk 400 GET  /api/usage/summary
-chk 400 POST /api/usage/ingest '{}'
-chk 400 POST /api/calendar/feeds '{"url":"nope"}'
+fam 400 GET  /api/usage/summary
+fam 400 POST /api/usage/ingest '{}'
+fam 400 POST /api/calendar/feeds '{"url":"nope"}'
 chk 401 POST /api/accounts/login '{"name":"nobody","pin":"0000"}'
 chk 200 GET  /hub/
 chk 200 GET  /kiosk/
@@ -57,8 +59,11 @@ off 403 GET  /api/settings/ai
 off 403 GET  /api/tailscale
 off 403 GET  /api/conductor/entities
 off 403 GET  /api/conductor/automations
-off 200 GET  /api/conductor/scenes
-off 200 GET  /api/shared/todos
+off 401 GET  /api/conductor/scenes
+off 401 GET  /api/shared/todos
+off 401 GET  /api/accounts
+off 403 POST /api/accounts
+off 200 GET  /api/identity
 off 200 GET  /hub/
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

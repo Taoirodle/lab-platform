@@ -244,7 +244,7 @@
         <h3>Account</h3>
         <div class="set"><div class="l">Signed in as<div class="s" id="s-acct">—</div></div><button class="btn" id="logout">Sign out</button></div>
         <div class="set"><div class="l">Server<div class="s" id="s-node">—</div></div><span class="status"><i></i>online</span></div>
-        <div class="set"><div class="l">Admin Portal<div class="s">Approvals, AI controls, the neural map (needs your USB key)</div></div><a class="btn" href="/admin/" target="_blank">Open</a></div>
+        <div class="set"><div class="l">Admin Portal<div class="s">Approvals, AI controls, the neural map (needs your USB key)</div></div><a class="btn" id="admin-open" href="/admin/" target="_blank">Open</a></div>
         <div class="set"><div class="l">Away from home<div class="s" id="s-away">Family reach the Hub from outside the house through Tailscale</div></div><span class="s" id="s-away-st" style="color:var(--warm)">Not set up</span></div>
       </div>
       <div class="card">
@@ -263,8 +263,16 @@
 <script src="/hub/labloader.js"></script>
 <script>
   const $=id=>document.getElementById(id);
-  const api=(p,opts)=>fetch(p,opts).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'error');return j;});
   const store={get:k=>{try{return JSON.parse(localStorage.getItem('lab_'+k))}catch{return null}},set:(k,v)=>localStorage.setItem('lab_'+k,JSON.stringify(v)),del:k=>localStorage.removeItem('lab_'+k)};
+  // Away from home (over Tailscale) every call carries your sign-in; at home it simply rides along.
+  const away=/^100\.|\.ts\.net$/i.test(location.hostname);
+  const api=(p,opts={})=>{ const s=store.get('session');
+    return fetch(p,{...opts,headers:{...(opts.headers||{}),...(s?{Authorization:'Bearer '+s}:{})}}).then(async r=>{const j=await r.json().catch(()=>({}));
+      if(r.status===401&&j.signin) signedOut(j.error);
+      if(!r.ok)throw new Error(j.error||'error');return j;}); };
+  let bounced=false;
+  function signedOut(why){ if(bounced) return; bounced=true; store.del('session'); store.del('account'); me=null;
+    setMode('login'); $('g-err').textContent=why||''; showGate(); }
   const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
   let boot=LabLoader.overlay({label:'L.A.B Hub',bg:'#0a0c14',color:'#b79bff'});
   let me=store.get('account');
@@ -272,18 +280,19 @@
   // ---- account gate ----
   let mode='create';
   function showGate(){ $('gate').classList.add('on'); $('app').style.display='none'; }
-  function setMode(m){ mode=m;
+  function setMode(m){ if(away) m='login'; mode=m;
     $('g-title').textContent=m==='create'?'Welcome to L.A.B':'Welcome back';
-    $('g-sub').textContent=m==='create'?'Create your account for the family Hub.':'Log in to your Hub.';
+    $('g-sub').textContent=away?'You\'re away from home. Sign in with your name and PIN — new accounts are made at home, or with an invite.':m==='create'?'Create your account for the family Hub.':'Log in to your Hub.';
     $('g-go').textContent=m==='create'?'Create account':'Log in';
-    $('g-switch').innerHTML=m==='create'?'Already set up? <a id="g-toggle">Log in</a>':'New here? <a id="g-toggle">Create account</a>';
-    $('g-toggle').onclick=()=>setMode(m==='create'?'login':'create'); }
+    $('g-switch').innerHTML=away?'':m==='create'?'Already set up? <a id="g-toggle">Log in</a>':'New here? <a id="g-toggle">Create account</a>';
+    if(!away) $('g-toggle').onclick=()=>setMode(m==='create'?'login':'create'); }
   $('g-toggle').onclick=()=>setMode('login');
   $('g-go').onclick=async()=>{
     const name=$('g-name').value.trim(),pin=$('g-pin').value.trim(); $('g-err').textContent='';
-    try{ const a=await api('/api/accounts'+(mode==='login'?'/login':''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,pin})});
-      store.set('account',a); me=a; api('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:a.id,type:'login',payload:{name:a.name}})}).catch(()=>{});
-      $('gate').classList.remove('on'); start();
+    try{ const {session,...a}=await api('/api/accounts'+(mode==='login'?'/login':''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,pin})});
+      if(session) store.set('session',session); store.set('account',a); me=a; bounced=false;
+      api('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:a.id,type:'login',payload:{name:a.name}})}).catch(()=>{});
+      $('gate').classList.remove('on'); if(started) location.reload(); else start();
     }catch(e){ $('g-err').textContent=e.message; }
   };
 
@@ -446,7 +455,9 @@
   try{const sv=store.get('skinvars');if(sv)applySkin(sv);}catch{}
 
   // ---- start ----
+  let started=false;
   async function start(){
+    started=true;
     $('app').style.display='block';
     $('greet').textContent=`Hi ${me.name}`;
     $('s-acct').textContent=me.name;
@@ -454,9 +465,14 @@
     try{const id=await api('/api/identity'); $('hosted').textContent='hosted by '+id.node; $('s-node').textContent=id.node; $('foot').textContent='L.A.B Hub · shared family surface · from '+id.node;
       if(id.away){ $('s-away').innerHTML='With Tailscale on, open <b>'+esc(id.away.url)+'</b>'; $('s-away-st').textContent='On'; $('s-away-st').style.color='var(--ok)'; }}catch{}
     loadTodos(); loadEvents(); loadFamilyStats(); loadFeeds(); loadTargets(); loadSkins();
-    $('ics-url').textContent=location.origin+'/api/calendar/family.ics';
+    if(!away) $('ics-url').textContent=location.origin+'/api/calendar/family.ics';
+    else { // away: the subscription needs its own read-only key, made only when asked for (a new one retires the old)
+      $('ics-url').innerHTML='<button class="btn" id="ics-make" style="padding:4px 10px">Make a link for my phone</button>';
+      $('ics-make').onclick=async()=>{ try{ const r=await api('/api/calendar/feed-key',{method:'POST'}); $('ics-url').textContent=location.origin+'/api/calendar/family.ics?k='+r.key; }catch(e){ $('ics-url').textContent=e.message; } };
+      $('admin-open').replaceWith(Object.assign(document.createElement('span'),{className:'s',textContent:'At home only'}));
+    }
     // live: when anyone changes a shared thing, this page refreshes it at once
-    (function live(){ let ws; try{ ws=new WebSocket(location.origin.replace(/^http/,'ws')+'/ws'); }catch{ return setTimeout(live,10000); }
+    (function live(){ let ws; const s=store.get('session'); try{ ws=new WebSocket(location.origin.replace(/^http/,'ws')+'/ws'+(s?'?s='+encodeURIComponent(s):'')); }catch{ return setTimeout(live,10000); }
       ws.onmessage=e=>{ let m; try{ m=JSON.parse(e.data); }catch{ return; } if(m.type!=='shared') return;
         const a=document.activeElement; if(a&&a.tagName==='INPUT'&&a.value) return;
         if(m.what==='todos'||m.what==='sauce') loadTodos();
@@ -467,7 +483,7 @@
     api('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:me.id,type:'page',payload:{page:'web-hub'}})}).catch(()=>{});
     if(boot){boot.done();boot=null;}
   }
-  $('logout').onclick=()=>{ store.del('account'); location.reload(); };
+  $('logout').onclick=()=>{ api('/api/accounts/logout',{method:'POST'}).catch(()=>{}).finally(()=>{ store.del('account'); store.del('session'); location.reload(); }); };
 
   if(me){ start(); } else { setMode('create'); showGate(); if(boot){boot.done();boot=null;} }
 </script>
